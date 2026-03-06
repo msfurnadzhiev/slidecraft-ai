@@ -1,0 +1,63 @@
+@startuml app_architecture
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam packageStyle rectangle
+
+title SlideCraft – App Architecture
+
+package "API" as api #E8F4FD {
+  [main] as main
+  [routers] as routers
+  [dependencies] as deps
+}
+
+package "Bootstrap" as bootstrap #F0F8E8 {
+  [startup] as startup
+  [get_db] as get_db
+  [get_document_service] as get_svc
+}
+
+package "Services" as services #FFF4E6 {
+  [DocumentService] as doc_svc
+}
+
+package "Ingestion" as ingestion #F5E6FF {
+  [FileLoader] as loader
+  [TextChunker] as chunker
+  [EmbeddingGenerator] as embedder
+  [PDFImageExtractor] as img_extractor
+}
+
+package "Infrastructure" as infra #E8F8F0 {
+  [FileStorage] as file_storage
+  [ImageStorage] as image_storage
+  [db.crud] as crud
+  [db.models] as models
+  [schemas] as schemas
+}
+
+database "PostgreSQL" as pg
+storage "Volumes" as vol
+
+main --> routers
+routers --> deps
+deps --> get_db
+deps --> get_svc
+get_svc --> get_db
+get_svc --> doc_svc
+
+doc_svc --> loader
+doc_svc --> chunker
+doc_svc --> embedder
+doc_svc --> img_extractor
+doc_svc --> file_storage
+doc_svc --> image_storage
+doc_svc --> crud
+doc_svc --> schemas
+
+crud --> models
+file_storage --> vol
+image_storage --> vol
+models --> pg
+
+@enduml
