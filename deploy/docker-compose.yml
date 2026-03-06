@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+
+  api:
+    container_name: slidecraft-api
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/slidecraft
+      DOCUMENT_STORAGE_PATH: /data/documents
+      IMAGE_STORAGE_PATH: /data/images
+    volumes:
+      - documents:/data/documents
+      - images:/data/images
+
+  db:
+    container_name: slidecraft-db
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: slidecraft
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+  documents:
+  images:
