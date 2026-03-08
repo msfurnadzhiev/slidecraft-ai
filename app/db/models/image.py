@@ -21,9 +21,8 @@ class Image(BaseModel):
 
     document = relationship("Document", back_populates="images")
     embedding = relationship(
-        "Embedding",
-        primaryjoin="and_(Embedding.object_type=='image', Embedding.object_id==Image.image_id)",
-        foreign_keys="[Embedding.object_id]",
+        "ImageEmbedding",
+        back_populates="image",
         uselist=False,
-        viewonly=True,
+        cascade="all, delete-orphan",
     )

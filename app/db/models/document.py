@@ -24,8 +24,13 @@ class Document(BaseModel):
         back_populates="document",
         cascade="all, delete-orphan",
     )
-    embeddings = relationship(
-        "Embedding",
+    chunk_embeddings = relationship(
+        "ChunkEmbedding",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    image_embeddings = relationship(
+        "ImageEmbedding",
         back_populates="document",
         cascade="all, delete-orphan",
     )

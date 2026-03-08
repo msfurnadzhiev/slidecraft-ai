@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 
 from app.db.models import Base as BaseModel
 
+
 class Chunk(BaseModel):
     __tablename__ = "chunks"
 
@@ -11,7 +12,7 @@ class Chunk(BaseModel):
     document_id = Column(
         String,
         ForeignKey("documents.document_id", ondelete="CASCADE"),
-        nullable=False
+        nullable=False,
     )
 
     page_number = Column(Integer, nullable=False)
@@ -22,10 +23,8 @@ class Chunk(BaseModel):
 
     document = relationship("Document", back_populates="chunks")
     embedding = relationship(
-        "Embedding",
-        primaryjoin="and_(Embedding.object_type=='chunk', Embedding.object_id==Chunk.chunk_id)",
-        foreign_keys="[Embedding.object_id]",
+        "ChunkEmbedding",
+        back_populates="chunk",
         uselist=False,
-        viewonly=True,
+        cascade="all, delete-orphan",
     )
-

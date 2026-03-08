@@ -1,29 +1,23 @@
+"""Schemas for chunk and image embeddings (separate vector spaces)."""
+
 from typing import List, Optional
 
 from app.schemas.base import BaseSchema
 
 
-class EmbeddingBase(BaseSchema):
-    """Base schema for embedding."""
+class ChunkEmbeddingCreate(BaseSchema):
+    """Schema for creating a chunk embedding (sentence-transformers, 384-dim)."""
 
+    document_id: str
+    chunk_id: str
     vector: List[float]
-
-
-class EmbeddingCreate(EmbeddingBase):
-    """Unified schema for creating an embedding (chunk or image)."""
-
-    document_id: str
-    object_id: str
-    object_type: str  # 'chunk' | 'image'
     page_number: Optional[int] = None
 
 
-class EmbeddingResponse(EmbeddingBase):
-    """Schema for embedding response."""
+class ImageEmbeddingCreate(BaseSchema):
+    """Schema for creating an image embedding (CLIP, 512-dim)."""
 
-    embedding_id: str
     document_id: str
-    object_id: str
-    object_type: str
+    image_id: str
+    vector: List[float]
     page_number: Optional[int] = None
-
