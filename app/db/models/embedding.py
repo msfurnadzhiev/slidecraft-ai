@@ -21,7 +21,7 @@ class Embedding(BaseModel):
     )
     object_id = Column(String, nullable=False)
     object_type = Column(String, nullable=False)  # 'chunk' | 'image'
-    vector = Column(Vector(384), nullable=False)
+    vector = Column(Vector(512), nullable=False)
     page_number = Column(Integer, nullable=True)
 
     document = relationship("Document", back_populates="embeddings")
