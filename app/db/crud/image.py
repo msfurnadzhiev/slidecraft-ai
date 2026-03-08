@@ -34,6 +34,23 @@ def get_images_by_document(db: Session, document_id: str) -> List[Image]:
     )
 
 
+def get_images_by_page_numbers(
+    db: Session, document_id: str, page_numbers: List[int]
+) -> List[Image]:
+    """Get all images for a document filtered to specific page numbers."""
+    if not page_numbers:
+        return []
+    return (
+        db.query(Image)
+        .filter(
+            Image.document_id == document_id,
+            Image.page_number.in_(page_numbers),
+        )
+        .order_by(Image.page_number, Image.file_name)
+        .all()
+    )
+
+
 def delete_image(db: Session, image_id: str) -> bool:
     """Stage an image deletion in the session (embedding deleted via app or cascade)."""
     image = get_image(db, image_id)

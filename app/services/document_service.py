@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.db.crud import (
@@ -102,16 +102,15 @@ class DocumentService:
 
     def _extract_chunks(
         self, document_id: str, document_content: DocumentContent
-    ) -> Tuple[List[ChunkCreate], List[EmbeddingCreate]]:
+    ) -> int:
         """Chunk document and create chunk and embedding creates.
-        
+
         Args:
             document_id: The ID of the document
             document_content: The content of the document
 
         Returns:
-            Number of chunks created: int
-
+            Number of chunks created.
         """
         chunk_creates = self.chunker.chunk_document(document_content)
 
@@ -129,16 +128,15 @@ class DocumentService:
 
     def _extract_images(
         self, file_path: str, document_id: str
-    ) -> Tuple[List[ImageCreate], List[EmbeddingCreate]]:
+    ) -> int:
         """Images extraction and embedding creation.
 
         Args:
             file_path: The path to the document file
             document_id: The ID of the document
-        
+
         Returns:
-            Number of images created: int
-    
+            Number of images created.
         """
         image_creates = self.image_extractor.extract_images(
             file_path, document_id, self.image_storage

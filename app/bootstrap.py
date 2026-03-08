@@ -16,7 +16,9 @@ from app.ingestion import (
     TextChunker,
     EmbeddingGenerator,
 )
+from app.services.context_assembler import ContextAssembler as ContextAssemblerClass
 from app.services.document_service import DocumentService as DocumentServiceClass
+from app.services.search_service import SearchService as SearchServiceClass
 from app.storage import LocalFileStorage, LocalImageStorage
 
 # Shared instances (singletons) used by DocumentService
@@ -49,3 +51,18 @@ def get_document_service(db: Session = Depends(get_db)) -> DocumentServiceClass:
         image_extractor=image_extractor,
         image_storage=image_storage,
     )
+
+
+def get_search_service(db: Session = Depends(get_db)) -> SearchServiceClass:
+    """Build SearchService for internal semantic search (e.g. agent or other services)."""
+    return SearchServiceClass(
+        db=db,
+        embedding_generator=embedding_generator,
+        file_loader=file_loader,
+        file_storage=file_storage,
+    )
+
+
+def get_context_assembler(db: Session = Depends(get_db)) -> ContextAssemblerClass:
+    """Build ContextAssembler for transforming search results into ordered context."""
+    return ContextAssemblerClass(db=db)

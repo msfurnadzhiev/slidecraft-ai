@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from app.db.models import Embedding
 from app.schemas.embedding import EmbeddingCreate
@@ -61,3 +61,44 @@ def update_embedding_vector(
     if emb:
         emb.vector = vector
     return emb
+
+
+def search_similar_embeddings(
+    db: Session,
+    query_vector: List[float],
+    document_id: str,
+    object_type: str,
+    limit: Optional[int] = None,
+    max_distance: Optional[float] = None,
+) -> List[Tuple[Embedding, float]]:
+    """Return embeddings most similar to query_vector (cosine distance), scoped to document.
+
+    pgvector cosine_distance is in [0, 2]; 0 = identical.
+
+    Args:
+        db: The database session
+        query_vector: The query vector
+        document_id: The document ID
+        object_type: The object type
+        limit: The limit on the number of results
+        max_distance: The maximum distance for the results (0..1, e.g. 0.25 = 75% similarity)
+
+    Returns:
+        A list of tuples containing the embedding and the distance
+    
+    """
+    distance = Embedding.vector.cosine_distance(query_vector)
+    q = db.query(Embedding, distance).filter(
+        Embedding.document_id == document_id,
+        Embedding.object_type == object_type,
+    )
+    if max_distance is not None:
+        q = q.filter(distance <= max_distance)
+    
+    q = q.order_by(distance)
+
+    if limit is not None:
+        q = q.limit(limit)
+    
+    rows = q.all()
+    return [(row[0], float(row[1])) for row in rows]

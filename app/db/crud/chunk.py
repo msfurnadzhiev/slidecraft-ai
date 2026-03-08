@@ -25,6 +25,13 @@ def get_chunks_by_document(db: Session, document_id: str) -> List[Chunk]:
     return db.query(Chunk).filter(Chunk.document_id == document_id).order_by(Chunk.page_number, Chunk.chunk_index).all()
 
 
+def get_chunks_by_ids(db: Session, chunk_ids: List[str]) -> List[Chunk]:
+    """Get chunks by a list of chunk IDs. Order not guaranteed."""
+    if not chunk_ids:
+        return []
+    return db.query(Chunk).filter(Chunk.chunk_id.in_(chunk_ids)).all()
+
+
 def get_chunks_by_page(db: Session, document_id: str, page_number: int) -> List[Chunk]:
     """Get all chunks for a specific page."""
     return db.query(Chunk).filter(

@@ -11,7 +11,7 @@ from app.utils.singleton import SingletonMeta
 class TextChunker(metaclass=SingletonMeta):
     """Chunks text into smaller pieces based on token count."""
     
-    def __init__(self, max_tokens: int = 512, overlap_tokens: int = 50):
+    def __init__(self, max_tokens: int = 256, overlap_tokens: int = 25):
         """Initialize the chunker.
         
         Args:

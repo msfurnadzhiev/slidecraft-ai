@@ -33,10 +33,13 @@ class DocumentResponse(DocumentBase):
     pass
 
 
-class DocumentContent(DocumentBase):
-    """Schema for a document content with pages."""
-    
-    pass
+class DocumentContent(BaseSchema):
+    """In-memory representation of a loaded document with its page text."""
+
+    document_id: str
+    file_name: str
+    total_pages: int
+    pages: List[PageContent] = []
 
 
 class DocumentIngestResponse(BaseSchema):

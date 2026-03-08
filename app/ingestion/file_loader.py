@@ -3,10 +3,13 @@
 import fitz
 import os
 import uuid
-from typing import Dict
+from typing import TYPE_CHECKING, Dict, List
 
 from app.schemas.document import DocumentContent, PageContent
 from app.utils.singleton import SingletonMeta
+
+if TYPE_CHECKING:
+    from app.db.models import Chunk
 
 DOCUMENT_METADATA_KEYS = (
     "title",
@@ -32,6 +35,15 @@ class FileLoader(metaclass=SingletonMeta):
     
     def load_file(self, file_path: str) -> DocumentContent:
         """Load a file and return a DocumentContent object."""
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    def extract_chunks_text(
+        self, file_path: str, chunks: List["Chunk"]
+    ) -> Dict[str, str]:
+        """Re-extract text for a batch of chunks from a stored file using char offsets.
+
+        Returns a dict mapping chunk_id -> extracted text.
+        """
         raise NotImplementedError("Subclasses must implement this method.")
 
 class PDFLoader(FileLoader):
@@ -63,6 +75,38 @@ class PDFLoader(FileLoader):
             total_pages=len(pages),
             pages=pages
         )
+
+    def extract_chunks_text(
+        self, file_path: str, chunks: List["Chunk"]
+    ) -> Dict[str, str]:
+        """Open PDF once, group chunks by page, slice text by char offsets.
+
+        Returns a dict mapping chunk_id -> extracted text.
+        """
+        if not chunks:
+            return {}
+
+        result: Dict[str, str] = {}
+        by_page: Dict[int, List["Chunk"]] = {}
+        for ch in chunks:
+            by_page.setdefault(ch.page_number, []).append(ch)
+
+        doc = fitz.open(file_path)
+        try:
+            for page_number, page_chunks in by_page.items():
+                page_index = page_number - 1
+                if page_index < 0 or page_index >= len(doc):
+                    continue
+                page = doc.load_page(page_index)
+                page_text = page.get_text("text").strip()
+                for ch in page_chunks:
+                    start = max(ch.start_char_offset, 0)
+                    end = min(ch.end_char_offset, len(page_text))
+                    result[ch.chunk_id] = page_text[start:end]
+        finally:
+            doc.close()
+
+        return result
 
     def extract_metadata(self, file_path: str) -> DocumentMetadata:
         """Extract embedded metadata from a PDF and return a key-value dict.
