@@ -18,5 +18,6 @@ PyMuPDF==1.27.1
 tiktoken==0.12.0
 
 # Embeddings (CLIP – shared text/image vector space)
+torch>=2.0.0
 transformers==4.51.3
 Pillow==11.2.1

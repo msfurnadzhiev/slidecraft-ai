@@ -2,21 +2,22 @@
 
 from sqlalchemy.orm import Session
 
-from app.db.crud import document_crud, chunk_crud, embedding_crud
-from app.db.models import Chunk, Embedding
+from app.db.crud import document_crud, chunk_crud, embedding_crud, image_crud
+from app.db.models import Chunk, Embedding, Image
 from app.ingestion import EmbeddingGenerator, FileLoader
-from app.schemas.search import SearchResponse, SearchResultItem
+from app.schemas.search import ImageResultItem, SearchResponse, SearchResultItem
 from app.storage import FileStorage
 
-
 _LIMIT_CHUNK_RESULTS = 50
+_LIMIT_IMAGE_RESULTS = 10
 _SIMILARITY_THRESHOLD = 0.70
 _SIMILARITY_OFFSET = 1.0
 _OBJECT_TYPE_CHUNK = "chunk"
+_OBJECT_TYPE_IMAGE = "image"
 
 
 class SearchService:
-    """Semantic search over a single document's chunks."""
+    """Semantic search over a single document's chunks and images."""
 
     def __init__(
         self,
@@ -34,105 +35,68 @@ class SearchService:
         self,
         document_id: str,
         query: str,
-        object_type: str = _OBJECT_TYPE_CHUNK,
-        limit: int = _LIMIT_CHUNK_RESULTS,
-        threshold = _SIMILARITY_THRESHOLD,
+        chunk_limit: int = _LIMIT_CHUNK_RESULTS,
+        image_limit: int = _LIMIT_IMAGE_RESULTS,
+        threshold: float = _SIMILARITY_THRESHOLD,
     ) -> SearchResponse:
-        """Run semantic search; return top-k chunks with optional min similarity filter.
+        """Run semantic search for both chunks and images; return combined results.
 
-        Args:
-            document_id: The ID of the document to search
-            query: The query to search for
-            object_type: The type of object to search for
-            limit: The number of results to return
-            threshold: The minimum similarity threshold for the results 
-
-        Returns:
-            A SearchResponse object containing the search results
-
+        The same CLIP query vector is used against chunk embeddings and image
+        embeddings so that text and visual results are scored on the same scale.
         """
         _, pdf_path = self._resolve_document(document_id)
         query_vector = self.embedder.generate_embedding(query)
-
-        # pgvector uses cosine distance
         max_distance = _SIMILARITY_OFFSET - threshold
 
-        embedding_rows = embedding_crud.search_similar_embeddings(
-            self.db,
-            query_vector,
-            document_id,
-            object_type=object_type,
-            limit=limit,
+        chunk_rows = embedding_crud.search_similar_embeddings(
+            self.db, query_vector, document_id,
+            object_type=_OBJECT_TYPE_CHUNK,
+            limit=chunk_limit,
             max_distance=max_distance,
         )
-        if not embedding_rows:
-            return SearchResponse(document_id=document_id, query=query, results=[])
+        image_rows = embedding_crud.search_similar_embeddings(
+            self.db, query_vector, document_id,
+            object_type=_OBJECT_TYPE_IMAGE,
+            limit=image_limit,
+            max_distance=max_distance,
+        )
 
-        chunk_by_id, text_by_chunk_id = self._load_chunks_and_text(
-            embedding_rows, pdf_path
+        results = self._build_chunk_results(chunk_rows, pdf_path)
+        image_results = self._build_image_results(image_rows)
+
+        return SearchResponse(
+            document_id=document_id,
+            query=query,
+            results=results,
+            image_results=image_results,
         )
-        results = self._build_result_items(
-            embedding_rows, chunk_by_id, text_by_chunk_id
-        )
-        return SearchResponse(document_id=document_id, query=query, results=results)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     def _resolve_document(self, document_id: str) -> tuple[str, str]:
-        """Resolve document and return (document_id, absolute pdf_path).
-        
-        Args:
-            document_id: The ID of the document to resolve
-
-        Returns:
-            A tuple containing the document_id and the absolute path to the PDF file
-    
-        """
+        """Resolve document and return (document_id, absolute pdf_path)."""
         document = document_crud.get_document(self.db, document_id)
         if document is None:
             raise ValueError(f"Document not found: {document_id}")
         path = self.file_storage.get_absolute_path(document.storage_path)
         return document_id, path
 
-    def _load_chunks_and_text(
+    def _build_chunk_results(
         self,
         embedding_rows: list[tuple[Embedding, float]],
         pdf_path: str,
-    ) -> tuple[dict[str, Chunk], dict[str, str]]:
-        """Load chunks and their text from the PDF.
-        
-        Args:
-            embedding_rows: A list of tuples containing the embedding and the distance
-            pdf_path: The path to the PDF file
+    ) -> list[SearchResultItem]:
+        """Load chunk metadata + text from PDF and build result items."""
+        if not embedding_rows:
+            return []
 
-        Returns:
-            A tuple containing the chunk_by_id and the text_by_chunk_id
-
-        Raises:
-            ValueError: If the document is not found
-
-        """
         chunk_ids = [emb.object_id for emb, _ in embedding_rows]
         chunks = chunk_crud.get_chunks_by_ids(self.db, chunk_ids)
-        chunk_by_id = {c.chunk_id: c for c in chunks}
+        chunk_by_id: dict[str, Chunk] = {c.chunk_id: c for c in chunks}
         text_by_chunk_id = self.loader.extract_chunks_text(pdf_path, chunks)
-        return chunk_by_id, text_by_chunk_id
 
-    def _build_result_items(
-        self,
-        embedding_rows: list[tuple[Embedding, float]],
-        chunk_by_id: dict[str, Chunk],
-        text_by_chunk_id: dict[str, str],
-    ) -> list[SearchResultItem]:
-        """Convert embedding search results and chunk data into SearchResultItems.
-        
-        Args:
-            embedding_rows: A list of tuples containing the embedding and the distance
-            chunk_by_id: A dictionary containing the chunks by their ID
-            text_by_chunk_id: A dictionary containing the text by the chunk ID
-
-        Returns:
-            A list of SearchResultItem objects
-
-        """
         results: list[SearchResultItem] = []
         for emb, distance in embedding_rows:
             chunk = chunk_by_id.get(emb.object_id)
@@ -146,6 +110,35 @@ class SearchService:
                     page_number=chunk.page_number,
                     chunk_index=chunk.chunk_index,
                     text=text,
+                    score=score,
+                )
+            )
+        return results
+
+    def _build_image_results(
+        self,
+        embedding_rows: list[tuple[Embedding, float]],
+    ) -> list[ImageResultItem]:
+        """Load image metadata and build result items."""
+        if not embedding_rows:
+            return []
+
+        image_ids = [emb.object_id for emb, _ in embedding_rows]
+        images = image_crud.get_images_by_ids(self.db, image_ids)
+        image_by_id: dict[str, Image] = {img.image_id: img for img in images}
+
+        results: list[ImageResultItem] = []
+        for emb, distance in embedding_rows:
+            image = image_by_id.get(emb.object_id)
+            if image is None:
+                continue
+            score = round(_SIMILARITY_OFFSET - float(distance), 4)
+            results.append(
+                ImageResultItem(
+                    image_id=image.image_id,
+                    page_number=image.page_number,
+                    storage_path=image.storage_path,
+                    file_name=image.file_name,
                     score=score,
                 )
             )

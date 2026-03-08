@@ -24,6 +24,13 @@ def get_image(db: Session, image_id: str) -> Optional[Image]:
     return db.query(Image).filter(Image.image_id == image_id).first()
 
 
+def get_images_by_ids(db: Session, image_ids: List[str]) -> List[Image]:
+    """Get images by a list of image IDs. Order not guaranteed."""
+    if not image_ids:
+        return []
+    return db.query(Image).filter(Image.image_id.in_(image_ids)).all()
+
+
 def get_images_by_document(db: Session, document_id: str) -> List[Image]:
     """Get all images for a document, ordered by page and file_name."""
     return (

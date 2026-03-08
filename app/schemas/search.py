@@ -12,7 +12,8 @@ class SearchRequest(BaseSchema):
 
     document_id: str
     query: str
-    limit: int = 25
+    chunk_limit: int = 25
+    image_limit: int = 10
     threshold: float | None = Field(default=0.70)
 
 
@@ -26,9 +27,20 @@ class SearchResultItem(BaseSchema):
     score: float  # 0..1, higher = more similar
 
 
+class ImageResultItem(BaseSchema):
+    """A single image result with similarity score."""
+
+    image_id: str
+    page_number: int
+    storage_path: str
+    file_name: str
+    score: float  # 0..1, higher = more similar
+
+
 class SearchResponse(BaseSchema):
     """Response of a semantic search over one document."""
 
     document_id: str
     query: str
     results: List[SearchResultItem]
+    image_results: List[ImageResultItem] = []

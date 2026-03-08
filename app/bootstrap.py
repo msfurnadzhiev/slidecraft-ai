@@ -63,6 +63,6 @@ def get_search_service(db: Session = Depends(get_db)) -> SearchServiceClass:
     )
 
 
-def get_context_assembler(db: Session = Depends(get_db)) -> ContextAssemblerClass:
+def get_context_assembler() -> ContextAssemblerClass:
     """Build ContextAssembler for transforming search results into ordered context."""
-    return ContextAssemblerClass(db=db)
+    return ContextAssemblerClass()

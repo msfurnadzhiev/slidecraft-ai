@@ -1,4 +1,5 @@
 from typing import List, Optional
+
 from sqlalchemy.orm import Session
 
 from app.db.crud import (
@@ -12,6 +13,7 @@ from app.ingestion import (
     TextChunker,
     EmbeddingGenerator,
     PDFImageExtractor,
+    ImageExtractionResult,
 )
 from app.schemas.document import (
     DocumentContent,
@@ -126,31 +128,23 @@ class DocumentService:
 
         return len(chunk_creates)
 
-    def _extract_images(
-        self, file_path: str, document_id: str
-    ) -> int:
-        """Images extraction and embedding creation.
-
-        Args:
-            file_path: The path to the document file
-            document_id: The ID of the document
-
-        Returns:
-            Number of images created.
-        """
-        image_creates = self.image_extractor.extract_images(
-            file_path, document_id, self.image_storage
+    def _extract_images(self, file_path: str, document_id: str) -> int:
+        """Extract images, compute CLIP embeddings, and persist both."""
+        extraction: ImageExtractionResult = self.image_extractor.extract_images(
+            file_path, document_id, self.image_storage,
         )
 
-        if not image_creates:
+        if not extraction.images:
             return 0
 
-        embedding_creates = self.embedder.generate_image_embeddings(image_creates)
+        embedding_creates = self.embedder.generate_image_embeddings(
+            extraction.images, extraction.image_bytes,
+        )
 
-        image_crud.create_images(self.db, image_creates)
+        image_crud.create_images(self.db, extraction.images)
         embedding_crud.create_embeddings(self.db, embedding_creates)
 
-        return len(image_creates)
+        return len(extraction.images)
 
 
     def get_document(self, document_id: str) -> Optional[DocumentResponse]:

@@ -24,7 +24,8 @@ def search_with_context(
         search_response = search_service.search(
             document_id=request.document_id,
             query=request.query,
-            limit=request.limit,
+            chunk_limit=request.chunk_limit,
+            image_limit=request.image_limit,
             threshold=request.threshold,
         )
     except ValueError as e:

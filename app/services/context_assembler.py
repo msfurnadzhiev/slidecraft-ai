@@ -2,9 +2,7 @@
 
 from collections import defaultdict
 
-from sqlalchemy.orm import Session
-
-from app.schemas.context import Passage, RetrievalContext
+from app.schemas.context import ImageRef, Passage, RetrievalContext
 from app.schemas.search import SearchResponse, SearchResultItem
 
 _MIN_OVERLAP = 20
@@ -14,22 +12,71 @@ _OVERLAP_WINDOW = 200
 class ContextAssembler:
     """Transform raw SearchResponse into document-ordered RetrievalContext."""
 
-    def __init__(self, db: Session):
-        pass
-
     def assemble(self, search_response: SearchResponse) -> RetrievalContext:
-        """Deduplicate, reorder, merge chunks and attach page images."""
+        """Deduplicate, reorder, merge chunks and attach semantically matched images."""
         if search_response.results:
             grouped = self._group_by_page(search_response.results)
             passages = self._merge_passages(grouped)
         else:
             passages = []
 
+        self._attach_images(passages, search_response)
+
         return RetrievalContext(
             document_id=search_response.document_id,
             query=search_response.query,
             passages=passages,
         )
+
+    # ------------------------------------------------------------------
+    # Image attachment
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _attach_images(
+        passages: list[Passage], search_response: SearchResponse,
+    ) -> None:
+        """Attach image results to passages by page number.
+
+        Images whose page already has a text passage are added to that passage.
+        Images on pages with no text match become image-only passages.
+        The list is re-sorted into document order afterwards.
+        """
+        if not search_response.image_results:
+            return
+
+        images_by_page: dict[int, list[ImageRef]] = defaultdict(list)
+        for img in search_response.image_results:
+            images_by_page[img.page_number].append(
+                ImageRef(
+                    image_id=img.image_id,
+                    storage_path=img.storage_path,
+                    file_name=img.file_name,
+                )
+            )
+
+        assigned_pages: set[int] = set()
+        for passage in passages:
+            if passage.page_number in images_by_page:
+                passage.images = images_by_page[passage.page_number]
+                assigned_pages.add(passage.page_number)
+
+        for page_number in sorted(images_by_page.keys() - assigned_pages):
+            passages.append(
+                Passage(
+                    page_number=page_number,
+                    text="",
+                    chunk_ids=[],
+                    score=0.0,
+                    images=images_by_page[page_number],
+                )
+            )
+
+        passages.sort(key=lambda p: p.page_number)
+
+    # ------------------------------------------------------------------
+    # Chunk grouping and merging
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _group_by_page(

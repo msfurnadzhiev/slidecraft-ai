@@ -20,6 +20,7 @@ class Passage(BaseSchema):
     text: str
     chunk_ids: List[str]
     score: float
+    images: List[ImageRef] = []
 
 
 class RetrievalContext(BaseSchema):
