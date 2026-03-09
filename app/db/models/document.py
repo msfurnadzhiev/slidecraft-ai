@@ -1,3 +1,5 @@
+"""This module defines the Document SQLAlchemy model."""
+
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Integer, String

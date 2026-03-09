@@ -1,3 +1,5 @@
+"""CRUD operations for Document objects in the database."""
+
 from typing import List, Optional
 
 from sqlalchemy.orm import Session

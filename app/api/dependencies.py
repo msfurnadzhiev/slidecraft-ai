@@ -1,4 +1,7 @@
-"""API dependency definitions: database session and services."""
+"""API dependency definitions for FastAPI endpoints.
+
+These can be used directly in endpoint function parameters with FastAPI's `Depends`.
+"""
 
 from typing import Annotated
 

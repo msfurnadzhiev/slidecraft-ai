@@ -1,3 +1,5 @@
+"""CRUD operations for Image objects in the database."""
+
 from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session

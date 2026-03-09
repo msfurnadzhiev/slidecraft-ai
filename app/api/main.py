@@ -1,3 +1,4 @@
+"""SlideCraft API application entrypoint."""
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,6 +9,7 @@ from app.bootstrap import startup
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Async context manager for application lifespan."""
     startup()
     yield
 
