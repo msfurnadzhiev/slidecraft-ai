@@ -6,15 +6,21 @@ from pydantic import Field
 
 from app.schemas.base import BaseSchema
 
+# Default retrieval limits and similarity thresholds
+_DEFAULT_CHUNK_LIMIT = 50
+_DEFAULT_IMAGE_LIMIT = 10
+_DEFAULT_SIMILARITY_THRESHOLD = 0.60
+_DEFAULT_IMAGE_THRESHOLD = 0.22
 
 class SearchRequest(BaseSchema):
     """Parameters for a document-scoped semantic search."""
 
     document_id: str
     query: str
-    chunk_limit: int = 25
-    image_limit: int = 10
-    threshold: float | None = Field(default=0.70)
+    chunk_limit: int = _DEFAULT_CHUNK_LIMIT
+    image_limit: int = _DEFAULT_IMAGE_LIMIT
+    chunk_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD
+    image_threshold: float = _DEFAULT_IMAGE_THRESHOLD
 
 
 class SearchResultItem(BaseSchema):

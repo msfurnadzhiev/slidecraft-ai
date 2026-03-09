@@ -30,12 +30,7 @@ def search_with_context(
     """
     try:
         search_response = search_service.search(
-            document_id=request.document_id,
-            query=request.query,
-            chunk_limit=request.chunk_limit,
-            image_limit=request.image_limit,
-            chunk_threshold=request.chunk_threshold,
-            image_threshold=request.image_threshold,
+            request=request,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

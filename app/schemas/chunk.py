@@ -11,7 +11,7 @@ class ChunkBase(BaseSchema):
     chunk_index: int
     token_count: int
     start_char_offset: int  # offset into page text (0-based)
-    end_char_offset: int   # end offset (exclusive) into page text
+    end_char_offset: int    # end offset (exclusive) into page text
 
 
 class ChunkCreate(ChunkBase):
@@ -19,15 +19,11 @@ class ChunkCreate(ChunkBase):
 
     chunk_id: str
     text: str = ""  # used at ingest; precise text later from PDF via offsets
+    vector: Optional[list[float]] = None
 
 
 class ChunkResponse(ChunkBase):
     """Schema for chunk response."""
 
     chunk_id: str
-
-
-class ChunkWithEmbedding(ChunkResponse):
-    """Schema for chunk with embedding vector."""
-    
-    embedding_vector: Optional[list[float]] = None
+    vector: Optional[list[float]] = None

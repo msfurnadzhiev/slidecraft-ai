@@ -9,7 +9,6 @@ from fastapi import APIRouter, UploadFile, HTTPException
 from app.api.dependencies import DocumentService
 from app.schemas.document import DocumentIngestResponse, DocumentResponse
 from app.schemas.image import ImageResponse
-from app.schemas.document_metadata import DocumentMetadataItem
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -80,27 +79,6 @@ def get_document_images(document_id: str, document_service: DocumentService):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return document_service.get_document_images(document_id)
-
-
-@router.get("/{document_id}/metadata", response_model=List[DocumentMetadataItem])
-def get_document_metadata(document_id: str, document_service: DocumentService):
-    """
-    Retrieve all metadata for a document.
-
-    Args:
-        document_id: The ID of the document.
-        document_service: Injected DocumentService dependency.
-
-    Raises:
-        HTTPException: If document not found.
-
-    Returns:
-        List of metadata items.
-    """
-    doc = document_service.get_document(document_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return document_service.get_document_metadata(document_id)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

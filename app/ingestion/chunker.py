@@ -1,53 +1,72 @@
-"""Module for chunking text into smaller pieces with token counting."""
+"""Module for chunking text into smaller pieces with token counting.
+
+This module provides a singleton TextChunker class that splits text or
+document pages into smaller chunks suitable for embedding, while tracking
+character offsets for accurate re-extraction from the original document.
+"""
 
 import uuid
 from typing import List
+
 import tiktoken
 
 from app.schemas.chunk import ChunkCreate
 from app.schemas.document import DocumentContent
 from app.utils.singleton import SingletonMeta
 
+
 class TextChunker(metaclass=SingletonMeta):
     """Chunks text into smaller pieces based on token count."""
-    
+
     def __init__(self, max_tokens: int = 256, overlap_tokens: int = 25):
-        """Initialize the chunker.
-        
+        """
+        Initialize the chunker.
+
         Args:
-            max_tokens: Maximum number of tokens per chunk
-            overlap_tokens: Number of tokens to overlap between chunks
+            max_tokens: Maximum number of tokens per chunk.
+            overlap_tokens: Number of tokens to overlap between chunks.
         """
         self.max_tokens = max_tokens
         self.overlap_tokens = overlap_tokens
         self.encoding = tiktoken.get_encoding("cl100k_base")
-    
+
     def count_tokens(self, text: str) -> int:
-        """Count the number of tokens in a text."""
+        """Count the number of tokens in a text string."""
         return len(self.encoding.encode(text))
-    
+
     def chunk_text(self, text: str) -> List[str]:
-        """Split text into chunks based on token count."""
+        """Split a text string into chunks based on token count."""
         tokens = self.encoding.encode(text)
-        chunks = []
-        
+        chunks: List[str] = []
+
         start_idx = 0
         while start_idx < len(tokens):
             end_idx = start_idx + self.max_tokens
             chunk_tokens = tokens[start_idx:end_idx]
             chunk_text = self.encoding.decode(chunk_tokens)
             chunks.append(chunk_text)
-            
+
             if end_idx >= len(tokens):
                 break
-            
+
             start_idx = end_idx - self.overlap_tokens
-        
+
         return chunks
-    
+
     def chunk_document(self, document: DocumentContent) -> List[ChunkCreate]:
-        """Chunk a document into smaller pieces. Records character offsets so text can be re-extracted from the PDF."""
-        all_chunks = []
+        """
+        Chunk a document into smaller pieces suitable for embedding.
+
+        Tracks character offsets for each chunk so the text can be
+        accurately re-extracted from the original PDF.
+
+        Args:
+            document: DocumentContent object containing pages and text.
+
+        Returns:
+            List of ChunkCreate objects with chunk metadata and text.
+        """
+        all_chunks: List[ChunkCreate] = []
         global_chunk_index = 0
 
         for page in document.pages:
