@@ -7,24 +7,31 @@ title SlideCraft – App Architecture
 
 package "API" as api #E8F4FD {
   [main] as main
-  [routers] as routers
+  [document router] as doc_router
+  [search router] as search_router
   [dependencies] as deps
 }
 
 package "Bootstrap" as bootstrap #F0F8E8 {
   [startup] as startup
   [get_db] as get_db
-  [get_document_service] as get_svc
+  [get_document_service] as get_doc_svc
+  [get_search_service] as get_search_svc
+  [get_context_assembler] as get_ctx
 }
 
 package "Services" as services #FFF4E6 {
   [DocumentService] as doc_svc
+  [SearchService] as search_svc
+  [ContextAssembler] as ctx_assembler
 }
 
 package "Ingestion" as ingestion #F5E6FF {
-  [FileLoader] as loader
+  [PDFLoader] as pdf_loader
+  [FileLoader] as file_loader
   [TextChunker] as chunker
-  [EmbeddingGenerator] as embedder
+  [TextEmbedder] as text_embedder
+  [ImageEmbedder] as image_embedder
   [PDFImageExtractor] as img_extractor
 }
 
@@ -39,21 +46,39 @@ package "Infrastructure" as infra #E8F8F0 {
 database "PostgreSQL" as pg
 storage "Volumes" as vol
 
-main --> routers
-routers --> deps
+main --> doc_router
+main --> search_router
+doc_router --> deps
+search_router --> deps
 deps --> get_db
-deps --> get_svc
-get_svc --> get_db
-get_svc --> doc_svc
+deps --> get_doc_svc
+deps --> get_search_svc
+deps --> get_ctx
+get_doc_svc --> get_db
+get_search_svc --> get_db
+get_ctx --> ctx_assembler
 
-doc_svc --> loader
+get_doc_svc --> doc_svc
+get_search_svc --> search_svc
+
+doc_svc --> pdf_loader
 doc_svc --> chunker
-doc_svc --> embedder
+doc_svc --> text_embedder
+doc_svc --> image_embedder
 doc_svc --> img_extractor
 doc_svc --> file_storage
 doc_svc --> image_storage
 doc_svc --> crud
 doc_svc --> schemas
+
+search_svc --> file_loader
+search_svc --> text_embedder
+search_svc --> image_embedder
+search_svc --> file_storage
+search_svc --> crud
+search_svc --> schemas
+
+ctx_assembler --> schemas
 
 crud --> models
 file_storage --> vol
