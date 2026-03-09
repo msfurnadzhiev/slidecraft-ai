@@ -1,3 +1,5 @@
+"""Schemas for document-related operations."""
+
 from typing import Any, Dict, List, Optional
 
 from app.schemas.base import BaseSchema

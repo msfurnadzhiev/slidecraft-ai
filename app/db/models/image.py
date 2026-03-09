@@ -1,29 +1,31 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy.orm import relationship
+"""This module defines the Image SQLAlchemy model."""
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from app.db.models import Base as BaseModel
+
+if TYPE_CHECKING:
+    from app.db.models.document import Document
 
 
 class Image(BaseModel):
     __tablename__ = "images"
 
-    image_id = Column(String, primary_key=True)
+    image_id: Mapped[str] = mapped_column(String, primary_key=True)
 
-    document_id = Column(
+    document_id: Mapped[str] = mapped_column(
         String,
         ForeignKey("documents.document_id", ondelete="CASCADE"),
         nullable=False,
     )
 
-    storage_path = Column(String, nullable=False)
-    page_number = Column(Integer, nullable=False)
-    file_name = Column(String, nullable=False)
+    storage_path: Mapped[str] = mapped_column(String, nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    file_name: Mapped[str] = mapped_column(String, nullable=False)
+    vector: Mapped[list[float] | None] = mapped_column(Vector(512), nullable=True)
 
-    document = relationship("Document", back_populates="images")
-    embedding = relationship(
-        "Embedding",
-        primaryjoin="and_(Embedding.object_type=='image', Embedding.object_id==Image.image_id)",
-        foreign_keys="[Embedding.object_id]",
-        uselist=False,
-        viewonly=True,
-    )
+    document: Mapped["Document"] = relationship(back_populates="images")

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from app.schemas.base import BaseSchema
 
 
@@ -14,9 +16,11 @@ class ImageCreate(ImageBase):
     """Schema for creating an image."""
 
     image_id: str
+    vector: Optional[list[float]] = None
 
 
 class ImageResponse(ImageBase):
     """Schema for image response."""
 
     image_id: str
+    vector: Optional[list[float]] = None
