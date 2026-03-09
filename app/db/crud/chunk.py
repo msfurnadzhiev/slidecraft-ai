@@ -27,6 +27,25 @@ def create_chunks(db: Session, chunks: List[ChunkCreate]) -> List[Chunk]:
     return db_chunks
 
 
+def get_chunks_by_document(db: Session, document_id: str) -> List[Chunk]:
+    """
+    Return all chunks for a document, ordered by page and chunk index.
+
+    Args:
+        db: SQLAlchemy Session.
+        document_id: The document to fetch chunks for.
+
+    Returns:
+        List of Chunk instances in document order.
+    """
+    stmt = (
+        select(Chunk)
+        .where(Chunk.document_id == document_id)
+        .order_by(Chunk.page_number, Chunk.chunk_index)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
 def search_similar(
     db: Session,
     query_vector: List[float],

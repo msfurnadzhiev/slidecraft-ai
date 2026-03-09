@@ -20,6 +20,9 @@ tiktoken==0.12.0
 # Embeddings — text chunks (sentence-transformers, 384-dim)
 sentence-transformers==5.2.3
 
+# Content analysis
+scikit-learn==1.6.1
+
 # Embeddings — images (CLIP ViT-B/32, 512-dim)
 torch>=2.0.0
 transformers==4.51.3

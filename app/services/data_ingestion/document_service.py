@@ -5,15 +5,20 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.db.crud import document_crud, chunk_crud, image_crud
-from app.ingestion import FileLoader, TextChunker, PDFImageExtractor, ImageExtractionResult
-from app.ingestion.embeddings import TextEmbedder, ImageEmbedder
+from app.services.data_ingestion import (
+    FileLoader, 
+    TextChunker,
+    TextEmbedder,
+    ImageEmbedder,
+    PDFImageExtractor
+)
 from app.schemas.document import (
     DocumentContent,
     DocumentIngestResponse,
     DocumentResponse,
     DocumentCreate,
 )
-from app.schemas.image import ImageResponse
+from app.schemas.image import ImageObject, ImageExtractionResult
 from app.storage import FileStorage, ImageStorage
 
 
@@ -124,13 +129,13 @@ class DocumentService:
             metadata=document.metadata_,
         )
 
-    def get_document_images(self, document_id: str) -> List[ImageResponse]:
+    def get_document_images(self, document_id: str) -> List[ImageObject]:
         """Retrieve all images associated with a document."""
         if not document_crud.get_document(self.db, document_id):
             return []
         images = image_crud.get_images_by_document(self.db, document_id)
         return [
-            ImageResponse(
+            ImageObject(
                 image_id=img.image_id,
                 document_id=img.document_id,
                 storage_path=img.storage_path,

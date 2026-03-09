@@ -8,12 +8,24 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.bootstrap import get_db, get_document_service, get_search_service, get_context_assembler
-from app.services.context_assembler import ContextAssembler as ContextAssemblerClass
-from app.services.document_service import DocumentService as DocumentServiceClass
-from app.services.search_service import SearchService as SearchServiceClass
+from app.bootstrap import (
+    get_content_analyzer,
+    get_context_assembler,
+    get_context_retriever,
+    get_db,
+    get_document_service,
+    get_search_service,
+)
+from app.services.context_analyzer import ContentAnalyzer as ContentAnalyzerClass
+from app.services.data_ingestion.document_service import (
+    DocumentService as DocumentServiceClass,
+)
+from app.services.retrieval_context import ContextRetriever as ContextRetrieverClass
+from app.services.retrieval_context import ContextAssembler as ContextAssemblerClass
 
 Database = Annotated[Session, Depends(get_db)]
 DocumentService = Annotated[DocumentServiceClass, Depends(get_document_service)]
-SearchService = Annotated[SearchServiceClass, Depends(get_search_service)]
+SearchService = Annotated[ContextRetrieverClass, Depends(get_search_service)]
+ContextRetriever = Annotated[ContextRetrieverClass, Depends(get_context_retriever)]
 ContextAssembler = Annotated[ContextAssemblerClass, Depends(get_context_assembler)]
+ContentAnalyzer = Annotated[ContentAnalyzerClass, Depends(get_content_analyzer)]

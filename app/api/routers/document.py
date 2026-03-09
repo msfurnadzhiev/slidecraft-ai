@@ -8,7 +8,7 @@ from fastapi import APIRouter, UploadFile, HTTPException
 
 from app.api.dependencies import DocumentService
 from app.schemas.document import DocumentIngestResponse, DocumentResponse
-from app.schemas.image import ImageResponse
+from app.schemas.image import ImageObject
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -60,7 +60,7 @@ async def upload_document(file: UploadFile, document_service: DocumentService):
             os.unlink(tmp_file_path)
 
 
-@router.get("/{document_id}/images", response_model=List[ImageResponse])
+@router.get("/{document_id}/images", response_model=List[ImageObject])
 def get_document_images(document_id: str, document_service: DocumentService):
     """
     List all images for a document.

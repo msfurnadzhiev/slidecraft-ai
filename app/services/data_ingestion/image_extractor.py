@@ -6,16 +6,9 @@ from typing import Dict, List
 
 import fitz
 
-from app.schemas.image import ImageCreate
+from app.schemas.image import ImageCreate, ImageExtractionResult
 from app.storage import ImageStorage
 from app.utils.singleton import SingletonMeta
-
-
-@dataclass
-class ImageExtractionResult:
-    """Bundle returned by extract_images."""
-    images: List[ImageCreate] = field(default_factory=list)
-    image_bytes: Dict[str, bytes] = field(default_factory=dict)
 
 
 class PDFImageExtractor(metaclass=SingletonMeta):
