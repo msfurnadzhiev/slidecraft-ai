@@ -1,4 +1,4 @@
-"""Extract embedded images from PDF files and produce ImageCreate with storage."""
+"""Extract embedded images from PDF files and produce ImageCreate objects with storage."""
 
 import uuid
 from dataclasses import dataclass, field
@@ -13,8 +13,7 @@ from app.utils.singleton import SingletonMeta
 
 @dataclass
 class ImageExtractionResult:
-    """Bundle returned by ``extract_images``: metadata for the DB + raw bytes for embedding."""
-
+    """Bundle returned by extract_images."""
     images: List[ImageCreate] = field(default_factory=list)
     image_bytes: Dict[str, bytes] = field(default_factory=dict)
 
@@ -23,12 +22,23 @@ class PDFImageExtractor(metaclass=SingletonMeta):
     """Extract images from PDF pages using PyMuPDF."""
 
     def extract_images(
-        self, file_path: str, document_id: str, image_storage: ImageStorage,
+        self,
+        file_path: str,
+        document_id: str,
+        image_storage: ImageStorage,
     ) -> ImageExtractionResult:
-        """Extract all embedded images from a PDF, save to storage, return metadata + bytes.
+        """
+        Extract all embedded images from a PDF, save to storage, and return metadata + bytes.
 
-        The raw bytes are preserved in the result so they can be forwarded to
-        the embedding generator without a second read from storage.
+        Args:
+            file_path: Path to the PDF file.
+            document_id: ID of the document in the database.
+            image_storage: ImageStorage instance for saving extracted images.
+
+        Returns:
+            ImageExtractionResult containing:
+                - images: ImageCreate objects with metadata.
+                - image_bytes: Raw bytes of each image for embedding generation.
         """
         result = ImageExtractionResult()
         doc = fitz.open(file_path)
@@ -67,4 +77,5 @@ class PDFImageExtractor(metaclass=SingletonMeta):
                     result.image_bytes[image_id] = raw_bytes
         finally:
             doc.close()
+
         return result

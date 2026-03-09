@@ -1,28 +1,19 @@
-from typing import List, Optional, Tuple
+"""Service layer for document ingestion and retrieval."""
+
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
 
-from app.db.crud import (
-    document_crud,
-    chunk_crud,
-    embedding_crud,
-    image_crud,
-)
-from app.ingestion import (
-    FileLoader,
-    TextChunker,
-    EmbeddingGenerator,
-    PDFImageExtractor,
-)
+from app.db.crud import document_crud, chunk_crud, image_crud
+from app.ingestion import FileLoader, TextChunker, PDFImageExtractor, ImageExtractionResult
+from app.ingestion.embeddings import TextEmbedder, ImageEmbedder
 from app.schemas.document import (
     DocumentContent,
     DocumentIngestResponse,
     DocumentResponse,
     DocumentCreate,
 )
-from app.schemas.image import ImageCreate, ImageResponse
-from app.schemas.chunk import ChunkCreate
-from app.schemas.embedding import EmbeddingCreate
-from app.schemas.document_metadata import DocumentMetadataItem
+from app.schemas.image import ImageResponse
 from app.storage import FileStorage, ImageStorage
 
 
@@ -34,7 +25,8 @@ class DocumentService:
         db: Session,
         file_loader: FileLoader,
         text_chunker: TextChunker,
-        embedding_generator: EmbeddingGenerator,
+        text_embedder: TextEmbedder,
+        image_embedder: ImageEmbedder,
         file_storage: FileStorage,
         image_extractor: PDFImageExtractor,
         image_storage: ImageStorage,
@@ -43,47 +35,44 @@ class DocumentService:
         self.db = db
         self.loader = file_loader
         self.chunker = text_chunker
-        self.embedder = embedding_generator
+        self.text_embedder = text_embedder
+        self.image_embedder = image_embedder
         self.storage = file_storage
         self.image_extractor = image_extractor
         self.image_storage = image_storage
 
     def ingest_document(self, file_path: str, original_filename: str) -> DocumentIngestResponse:
-        """Ingest a document (PDF) and store it in the database.
+        """Ingest a document (PDF) and store it with chunks, embeddings, and images.
         
         Args:
-            file_path: The path to the document file
-            original_filename: The original filename of the document
+            file_path: Path to the document file.
+            original_filename: Original filename of the document.
 
         Returns:
-            DocumentIngestResponse: The response from the document ingestion
-
-        """        
-        # Load the document and extract the metadata
+            DocumentIngestResponse: Response containing the document ingestion details.
+        """
         document_content = self.loader.load_file(file_path)
         metadata = self.loader.extract_metadata(file_path)
         document_id = document_content.document_id
-        total_pages = document_content.total_pages
-        
 
-        # Create the document create object
+        # Compute storage path
         doc_storage_path = self.storage.relative_path(document_id, original_filename)
 
+        # Stage document in the database
         document_create = DocumentCreate(
             document_id=document_id,
             file_name=original_filename,
-            total_pages=total_pages,
+            total_pages=document_content.total_pages,
             storage_path=doc_storage_path,
             metadata=metadata,
         )
-
-        # Create the document in the database
         db_document = document_crud.create_document(self.db, document_create)
-       
+
+        # Process text and image content
         num_chunks_created = self._extract_chunks(document_id, document_content)
         num_images_created = self._extract_images(file_path, document_id)
 
-        # Save the PDF to the storage
+        # Save PDF file to storage
         self.storage.save(
             source_path=file_path,
             document_id=document_id,
@@ -100,92 +89,43 @@ class DocumentService:
             images=num_images_created,
         )
 
-    def _extract_chunks(
-        self, document_id: str, document_content: DocumentContent
-    ) -> Tuple[List[ChunkCreate], List[EmbeddingCreate]]:
-        """Chunk document and create chunk and embedding creates.
-        
-        Args:
-            document_id: The ID of the document
-            document_content: The content of the document
-
-        Returns:
-            Number of chunks created: int
-
-        """
+    def _extract_chunks(self, document_id: str, document_content: DocumentContent) -> int:
+        """Chunk document text, generate embeddings, and store in the database."""
         chunk_creates = self.chunker.chunk_document(document_content)
-
         if not chunk_creates:
             return 0
 
-        chunk_embedding_creates = self.embedder.generate_chunk_embeddings(
-            document_id, chunk_creates
-        )
- 
+        self.text_embedder.embed_chunks(chunk_creates)
         chunk_crud.create_chunks(self.db, chunk_creates)
-        embedding_crud.create_embeddings(self.db, chunk_embedding_creates)
-
         return len(chunk_creates)
 
-    def _extract_images(
-        self, file_path: str, document_id: str
-    ) -> Tuple[List[ImageCreate], List[EmbeddingCreate]]:
-        """Images extraction and embedding creation.
-
-        Args:
-            file_path: The path to the document file
-            document_id: The ID of the document
-        
-        Returns:
-            Number of images created: int
-    
-        """
-        image_creates = self.image_extractor.extract_images(
+    def _extract_images(self, file_path: str, document_id: str) -> int:
+        """Extract images, generate CLIP embeddings, and store in the database."""
+        extraction: ImageExtractionResult = self.image_extractor.extract_images(
             file_path, document_id, self.image_storage
         )
-
-        if not image_creates:
+        if not extraction.images:
             return 0
 
-        embedding_creates = self.embedder.generate_image_embeddings(image_creates)
-
-        image_crud.create_images(self.db, image_creates)
-        embedding_crud.create_embeddings(self.db, embedding_creates)
-
-        return len(image_creates)
-
+        self.image_embedder.embed_images(extraction.images, extraction.image_bytes)
+        image_crud.create_images(self.db, extraction.images)
+        return len(extraction.images)
 
     def get_document(self, document_id: str) -> Optional[DocumentResponse]:
-        """Get a document by its ID.
-        
-        Args:
-            document_id: The document ID
-            
-        Returns:
-            DocumentResponse or None if not found
-
-        """
+        """Retrieve a document by its ID."""
         document = document_crud.get_document(self.db, document_id)
-        if document:
-            return DocumentResponse(
-                document_id=document.document_id,
-                file_name=document.file_name,
-                total_pages=document.total_pages,
-                storage_path=document.storage_path,
-                metadata=document.metadata_,
-            )
-        return None
+        if not document:
+            return None
+        return DocumentResponse(
+            document_id=document.document_id,
+            file_name=document.file_name,
+            total_pages=document.total_pages,
+            storage_path=document.storage_path,
+            metadata=document.metadata_,
+        )
 
     def get_document_images(self, document_id: str) -> List[ImageResponse]:
-        """Get all images for a document.
-        
-        Args:
-            document_id: The document ID
-            
-        Returns:
-            List of ImageResponse objects or empty list if not found
-
-        """
+        """Retrieve all images associated with a document."""
         if not document_crud.get_document(self.db, document_id):
             return []
         images = image_crud.get_images_by_document(self.db, document_id)
@@ -201,16 +141,7 @@ class DocumentService:
         ]
 
     def list_documents(self, skip: int = 0, limit: int = 100) -> List[DocumentResponse]:
-        """List all documents with pagination.
-        
-        Args:
-            skip: Number of documents to skip
-            limit: Maximum number of documents to return
-            
-        Returns:
-            List of DocumentResponse objects
-
-        """
+        """List all documents with optional pagination."""
         documents = document_crud.get_all_documents(self.db, skip=skip, limit=limit)
         return [
             DocumentResponse(
@@ -223,42 +154,23 @@ class DocumentService:
         ]
 
     def delete_document(self, document_id: str) -> bool:
-        """
-        Delete a document and all associated data.
-
-        Args:
-            document_id: ID of the document to delete
-
-        Returns:
-            True if deleted, False if document does not exist
-
-        """
-        def _delete_document_files(file_name: str, image_names: list[str]):
-            """Remove document files from storage."""
-            for image_name in image_names:
-                self.image_storage.delete(document_id, image_name)
-
-            self.storage.delete(document_id, file_name)
-
-
+        """Delete a document along with all associated chunks, embeddings, and stored files."""
         document = document_crud.get_document(self.db, document_id)
-
         if document is None:
             return False
 
+        # Gather associated files
         file_name = document.file_name
-
         images = image_crud.get_images_by_document(self.db, document_id)
         image_names = [img.file_name for img in images]
 
+        # Delete database entries
         document_crud.delete_document(self.db, document_id)
-
-        # Ensure DB constraints are applied before touching storage
         self.db.flush()
 
-        _delete_document_files(file_name, image_names)
+        # Delete stored files
+        for image_name in image_names:
+            self.image_storage.delete(document_id, image_name)
+        self.storage.delete(document_id, file_name)
 
         return True
-
-
-
