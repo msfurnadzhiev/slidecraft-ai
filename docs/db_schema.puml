@@ -1,0 +1,71 @@
+@startuml slidecraft_db_schema
+!theme plain
+skinparam linetype ortho
+skinparam backgroundColor #FEFEFE
+
+' ------------------
+' Documents Table
+' ------------------
+entity "documents" as documents {
+  * document_id : VARCHAR
+  --
+  file_name : VARCHAR (NOT NULL)
+  storage_path : VARCHAR (NOT NULL)
+  total_pages : INTEGER (NOT NULL)
+  metadata : JSON
+}
+
+' ------------------
+' Chunks Table
+' ------------------
+entity "chunks" as chunks {
+  * chunk_id : VARCHAR
+  --
+  document_id : VARCHAR (FK, NOT NULL)
+  page_number : INTEGER (NOT NULL)
+  chunk_index : INTEGER (NOT NULL)
+  token_count : INTEGER (NOT NULL)
+  start_char_offset : INTEGER (NOT NULL)
+  end_char_offset : INTEGER (NOT NULL)
+}
+
+' ------------------
+' Images Table
+' ------------------
+entity "images" as images {
+  * image_id : VARCHAR
+  --
+  document_id : VARCHAR (FK, NOT NULL)
+  storage_path : VARCHAR (NOT NULL)
+  page_number : INTEGER (NOT NULL)
+  file_name : VARCHAR (NOT NULL)
+}
+
+' ------------------
+' Embeddings Table
+' One embedding per object: UNIQUE(object_type, object_id)
+' object_type: 'chunk' | 'image'
+' ------------------
+entity "embeddings" as embeddings {
+  * embedding_id : VARCHAR
+  --
+  document_id : VARCHAR (FK, NOT NULL)
+  object_id : VARCHAR (NOT NULL)
+  object_type : VARCHAR (NOT NULL)
+  vector : VECTOR(384) (NOT NULL)
+  page_number : INTEGER
+  --
+  ** UNIQUE (object_type, object_id)
+}
+
+' ------------------
+' Relationships
+' ------------------
+documents ||--o{ chunks : "1..*"
+documents ||--o{ images : "1..*"
+
+' One embedding per chunk/image (0..1 cardinality)
+chunks ||--o| embeddings : "0..1"
+images ||--o| embeddings : "0..1"
+
+@enduml
