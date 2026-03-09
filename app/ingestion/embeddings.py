@@ -1,8 +1,9 @@
-"""Unified CLIP-based embeddings for text chunks and images.
+"""Two-model embedding strategy: sentence-transformers for text, CLIP for images.
 
-Uses openai/clip-vit-base-patch32 so that text and image vectors live in
-the same 512-dim space — chunks and images with similar content will have
-close cosine similarity.
+Text chunks are embedded with all-MiniLM-L12-v2 (384-dim) for high-quality
+text-to-text retrieval.  Images are embedded with CLIP ViT-B/32 (512-dim) so
+that a CLIP text query can find visually relevant images.  The two vector
+spaces are independent — each model has its own DB table and index.
 """
 
 import io
@@ -10,20 +11,56 @@ from typing import Dict, List
 
 import torch
 from PIL import Image
+from sentence_transformers import SentenceTransformer
 from transformers import CLIPModel, CLIPProcessor
 
 from app.schemas.chunk import ChunkCreate
-from app.schemas.embedding import EmbeddingCreate
+from app.schemas.embedding import ChunkEmbeddingCreate, ImageEmbeddingCreate
 from app.schemas.image import ImageCreate
 from app.utils.singleton import SingletonMeta
 
-DEFAULT_MODEL_NAME = "openai/clip-vit-base-patch32"
+_DEFAULT_TEXT_MODEL = "sentence-transformers/all-MiniLM-L12-v2"
+_DEFAULT_CLIP_MODEL = "openai/clip-vit-base-patch32"
 
 
-class EmbeddingGenerator(metaclass=SingletonMeta):
-    """Generates L2-normalised CLIP embeddings for text and images."""
+class TextEmbedder(metaclass=SingletonMeta):
+    """Sentence-transformer embeddings for text chunks (384-dim)."""
 
-    def __init__(self, model_name: str = DEFAULT_MODEL_NAME):
+    def __init__(self, model_name: str = _DEFAULT_TEXT_MODEL):
+        self.model_name = model_name
+        self.model = SentenceTransformer(model_name)
+        self.embedding_dim: int = self.model.get_sentence_embedding_dimension()
+
+    def generate_embedding(self, text: str) -> List[float]:
+        """Encode a single text string."""
+        return self.model.encode(text, convert_to_numpy=True).tolist()
+
+    def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
+        """Encode a batch of texts."""
+        embeddings = self.model.encode(texts, convert_to_numpy=True)
+        return [emb.tolist() for emb in embeddings]
+
+    def generate_chunk_embeddings(
+        self, document_id: str, chunks: List[ChunkCreate],
+    ) -> List[ChunkEmbeddingCreate]:
+        """Generate sentence-transformer embeddings for a list of chunks."""
+        texts = [chunk.text for chunk in chunks]
+        vectors = self.generate_embeddings_batch(texts)
+        return [
+            ChunkEmbeddingCreate(
+                document_id=document_id,
+                chunk_id=chunk.chunk_id,
+                vector=vector,
+                page_number=chunk.page_number,
+            )
+            for chunk, vector in zip(chunks, vectors)
+        ]
+
+
+class ImageEmbedder(metaclass=SingletonMeta):
+    """CLIP embeddings for images (512-dim) and CLIP text queries."""
+
+    def __init__(self, model_name: str = _DEFAULT_CLIP_MODEL):
         self.model_name = model_name
         self.model = CLIPModel.from_pretrained(model_name)
         self.processor = CLIPProcessor.from_pretrained(model_name)
@@ -31,31 +68,12 @@ class EmbeddingGenerator(metaclass=SingletonMeta):
         self.embedding_dim: int = self.model.config.projection_dim  # 512
 
     @torch.no_grad()
-    def generate_embedding(self, text: str) -> List[float]:
-        """Encode a single text string into a CLIP text vector."""
+    def generate_text_query_embedding(self, text: str) -> List[float]:
+        """Encode a text query via CLIP's text encoder for cross-modal search."""
         inputs = self.processor(
             text=[text], return_tensors="pt", padding=True, truncation=True,
         )
         features = self.model.get_text_features(**inputs)
-        features = features / features.norm(dim=-1, keepdim=True)
-        return features[0].tolist()
-
-    @torch.no_grad()
-    def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
-        """Encode a batch of texts into CLIP text vectors."""
-        inputs = self.processor(
-            text=texts, return_tensors="pt", padding=True, truncation=True,
-        )
-        features = self.model.get_text_features(**inputs)
-        features = features / features.norm(dim=-1, keepdim=True)
-        return features.tolist()
-
-    @torch.no_grad()
-    def generate_image_embedding(self, image_bytes: bytes) -> List[float]:
-        """Encode a single image (raw bytes) into a CLIP image vector."""
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        inputs = self.processor(images=image, return_tensors="pt")
-        features = self.model.get_image_features(**inputs)
         features = features / features.norm(dim=-1, keepdim=True)
         return features[0].tolist()
 
@@ -72,40 +90,18 @@ class EmbeddingGenerator(metaclass=SingletonMeta):
         features = features / features.norm(dim=-1, keepdim=True)
         return features.tolist()
 
-    def generate_chunk_embeddings(
-        self, document_id: str, chunks: List[ChunkCreate],
-    ) -> List[EmbeddingCreate]:
-        """Generate CLIP text embeddings for a list of chunks."""
-        texts = [chunk.text for chunk in chunks]
-        vectors = self.generate_embeddings_batch(texts)
-        return [
-            EmbeddingCreate(
-                document_id=document_id,
-                object_id=chunk.chunk_id,
-                object_type="chunk",
-                vector=vector,
-                page_number=chunk.page_number,
-            )
-            for chunk, vector in zip(chunks, vectors)
-        ]
-
     def generate_image_embeddings(
         self,
         images: List[ImageCreate],
         image_bytes_map: Dict[str, bytes],
-    ) -> List[EmbeddingCreate]:
-        """Generate CLIP image embeddings for extracted images.
-
-        ``image_bytes_map`` maps each ``image_id`` to its raw file bytes so
-        the CLIP image encoder can produce a real vector (not a placeholder).
-        """
+    ) -> List[ImageEmbeddingCreate]:
+        """Generate CLIP image embeddings for extracted images."""
         ordered_bytes = [image_bytes_map[img.image_id] for img in images]
         vectors = self.generate_image_embeddings_batch(ordered_bytes)
         return [
-            EmbeddingCreate(
+            ImageEmbeddingCreate(
                 document_id=img.document_id,
-                object_id=img.image_id,
-                object_type="image",
+                image_id=img.image_id,
                 vector=vector,
                 page_number=img.page_number,
             )

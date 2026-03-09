@@ -1,66 +1,66 @@
+from typing import List, Optional, Tuple
+
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from sqlalchemy import select
 
 from app.db.models import Chunk
 from app.schemas.chunk import ChunkCreate
 
 
-
 def create_chunks(db: Session, chunks: List[ChunkCreate]) -> List[Chunk]:
-    """Create multiple chunks in the database."""
-    db_chunks = [
+    """
+    Create multiple chunks in the database.
+
+    Args:
+        db: SQLAlchemy Session.
+        chunks: List of ChunkCreate schemas.
+
+    Returns:
+        List of created Chunk instances (not yet committed).
+    """
+    db_chunks: List[Chunk] = [
         Chunk(**chunk.model_dump(exclude={"text"})) for chunk in chunks
     ]
     db.add_all(db_chunks)
     return db_chunks
 
 
-def get_chunk(db: Session, chunk_id: str) -> Optional[Chunk]:
-    """Get a chunk by ID."""
-    return db.query(Chunk).filter(Chunk.chunk_id == chunk_id).first()
-
-
-def get_chunks_by_document(db: Session, document_id: str) -> List[Chunk]:
-    """Get all chunks for a document."""
-    return db.query(Chunk).filter(Chunk.document_id == document_id).order_by(Chunk.page_number, Chunk.chunk_index).all()
-
-
-def get_chunks_by_ids(db: Session, chunk_ids: List[str]) -> List[Chunk]:
-    """Get chunks by a list of chunk IDs. Order not guaranteed."""
-    if not chunk_ids:
-        return []
-    return db.query(Chunk).filter(Chunk.chunk_id.in_(chunk_ids)).all()
-
-
-def get_chunks_by_page(db: Session, document_id: str, page_number: int) -> List[Chunk]:
-    """Get all chunks for a specific page."""
-    return db.query(Chunk).filter(
-        Chunk.document_id == document_id,
-        Chunk.page_number == page_number
-    ).order_by(Chunk.chunk_index).all()
-
-
-def delete_chunk(db: Session, chunk_id: str) -> bool:
-    """Stage a chunk deletion in the session."""
-    chunk = get_chunk(db, chunk_id)
-    if chunk:
-        db.delete(chunk)
-        return True
-    return False
-
-
-def delete_chunks_by_document(db: Session, document_id: str) -> int:
-    """Stage deletion of all chunks for a document. Returns count of matched rows."""
-    return db.query(Chunk).filter(Chunk.document_id == document_id).delete()
-
-
-def update_chunk(
+def search_similar(
     db: Session,
-    chunk_id: str,
-    token_count: Optional[int] = None,
-) -> Optional[Chunk]:
-    """Stage a chunk update in the session."""
-    chunk = get_chunk(db, chunk_id)
-    if chunk and token_count is not None:
-        chunk.token_count = token_count
-    return chunk
+    query_vector: List[float],
+    document_id: str,
+    limit: Optional[int] = None,
+    max_distance: Optional[float] = None,
+) -> List[Tuple[Chunk, float]]:
+    """
+    Return chunks most similar to query_vector using cosine distance.
+
+    Args:
+        db: SQLAlchemy Session.
+        query_vector: Query embedding vector.
+        document_id: The document ID to restrict search.
+        limit: Maximum number of results.
+        max_distance: Optional maximum cosine distance filter.
+
+    Returns:
+        List of tuples: (Chunk, distance)
+    """
+    distance_expr = Chunk.vector.cosine_distance(query_vector)
+
+    stmt = (
+        select(Chunk, distance_expr.label("distance"))
+        .where(Chunk.document_id == document_id)
+        .where(Chunk.vector.isnot(None))
+    )
+
+    if max_distance is not None:
+        stmt = stmt.where(distance_expr <= max_distance)
+
+    stmt = stmt.order_by(distance_expr)
+
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    results = db.execute(stmt).all()
+
+    return [(row.Chunk, float(row.distance)) for row in results]
