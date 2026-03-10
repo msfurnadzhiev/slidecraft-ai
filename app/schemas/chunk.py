@@ -1,40 +1,42 @@
 from typing import Optional
+from uuid import UUID
 
 from app.schemas.base import BaseSchema
 
 
 class ChunkBase(BaseSchema):
-    """Base schema for chunk. Text is re-extracted from PDF using start/end char offsets on the page."""
+    """Base schema for a page-level chunk."""
 
-    document_id: str
+    document_id: UUID
     page_number: int
-    chunk_index: int
     token_count: int
-    start_char_offset: int  # offset into page text (0-based)
-    end_char_offset: int    # end offset (exclusive) into page text
 
 
 class ChunkCreate(ChunkBase):
-    """Schema for creating a chunk. text is used at ingest (e.g. embedder) only; not persisted."""
+    """Schema for creating a chunk."""
 
-    chunk_id: str
-    text: str = ""  # used at ingest; precise text later from PDF via offsets
-    vector: Optional[list[float]] = None
+    chunk_id: UUID
+    content: str = ""
+    summary: Optional[str] = None
+    content_vector: Optional[list[float]] = None
+    summary_vector: Optional[list[float]] = None
 
 
 class ChunkObject(ChunkBase):
     """Schema for chunk object returned directly from storage/DB."""
 
-    chunk_id: str
-    vector: Optional[list[float]] = None
+    chunk_id: UUID
+    content: Optional[str] = None
+    summary: Optional[str] = None
+    content_vector: Optional[list[float]] = None
+    summary_vector: Optional[list[float]] = None
 
 
 class ChunkSearchResult(BaseSchema):
     """Chunk semantic-search result used by retrieval context."""
 
-    chunk_id: str
+    chunk_id: UUID
     page_number: int
-    chunk_index: int
     text: str
     score: float
 
@@ -42,7 +44,6 @@ class ChunkSearchResult(BaseSchema):
 class ChunkReference(BaseSchema):
     """Schema for a chunk reference used by context assembly."""
 
-    chunk_id: str
+    chunk_id: UUID
     page_number: int
-    chunk_index: int
     score: float

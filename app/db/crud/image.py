@@ -1,6 +1,7 @@
 """CRUD operations for Image objects in the database."""
 
 from typing import List, Optional, Tuple
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -25,7 +26,7 @@ def create_images(db: Session, images: List[ImageCreate]) -> List[Image]:
     return db_images
 
 
-def get_images_by_document(db: Session, document_id: str) -> List[Image]:
+def get_images_by_document(db: Session, document_id: UUID) -> List[Image]:
     """
     Get all images for a specific document.
 
@@ -44,7 +45,7 @@ def get_images_by_document(db: Session, document_id: str) -> List[Image]:
 def search_similar(
     db: Session,
     query_vector: List[float],
-    document_id: str,
+    document_id: UUID,
     limit: Optional[int] = None,
     max_distance: Optional[float] = None,
 ) -> List[Tuple[Image, float]]:
@@ -61,12 +62,12 @@ def search_similar(
     Returns:
         List of tuples: (Image, distance)
     """
-    distance_expr = Image.vector.cosine_distance(query_vector)
+    distance_expr = Image.description_vector.cosine_distance(query_vector)
 
     stmt = (
         select(Image, distance_expr.label("distance"))
         .where(Image.document_id == document_id)
-        .where(Image.vector.isnot(None))
+        .where(Image.description_vector.isnot(None))
     )
 
     if max_distance is not None:

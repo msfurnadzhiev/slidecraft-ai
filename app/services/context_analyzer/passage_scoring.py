@@ -1,4 +1,4 @@
-"""Per-passage scoring and categorisation."""
+"""Per-passage scoring and categorization of retrieved content."""
 
 from typing import Dict, List, Set, Tuple
 
@@ -6,9 +6,9 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.schemas.analysis import ContentCategory, PassageAnalysis, Theme
-from app.schemas.context import Passage
+from app.schemas.chunk import ChunkSearchResult
 
-from .constants import (
+from app.services.context_analyzer.constants import (
     CATEGORY_KEYWORDS,
     EARLY_CATEGORIES,
     LATE_CATEGORIES,
@@ -20,13 +20,6 @@ from .constants import (
     W_POSITION,
     W_RETRIEVAL,
 )
-
-
-def passage_retrieval_score(passage: Passage) -> float:
-    """Best semantic-search score among the passage's chunks/images."""
-    chunk_best = max((c.score for c in passage.chunks), default=0.0)
-    image_best = max((img.score for img in passage.images), default=0.0)
-    return max(chunk_best, image_best)
 
 
 def passage_topic_relevance(
@@ -63,8 +56,11 @@ def relative_position(
     return (page_number - min_page) / span
 
 
-def compute_page_range(passages: List[Passage]) -> Tuple[int, int]:
-    pages = [p.page_number for p in passages]
+def compute_page_range(chunks: List[ChunkSearchResult]) -> Tuple[int, int]:
+    """Compute the range of page numbers across the retrieved chunks."""
+    if not chunks:
+        return (0, 0)
+    pages = [c.page_number for c in chunks]
     return min(pages), max(pages)
 
 
@@ -74,16 +70,24 @@ def score_categories(
     retrieval_score: float,
     raw_text: str,
 ) -> Dict[ContentCategory, float]:
-    """Score a passage against every content category.
+    """Score a passage against all content categories using multiple signals.
 
-    Signals used:
-    - **Keyword overlap** with category-specific vocabularies.
-    - **Document position** (early pages favour introduction/background,
-      late pages favour conclusion).
-    - **Numeric density** bonus for DATA passages.
-    - **Retrieval score** bonus for KEY_FINDING passages.
+    Signals include:
+    - Keyword overlap with category-specific vocabularies
+    - Relative document position (early/late bias)
+    - Numeric density (bonus for DATA passages)
+    - Retrieval score bonus (for KEY_FINDING passages)
 
-    Scores are normalised so they sum to 1.0 across categories.
+    Scores are normalized to sum to 1.0 across categories.
+
+    Args:
+        words: A set of unique words from the passage text.
+        relative_position: The normalized position of the passage (0.0-1.0).
+        retrieval_score: The semantic-search score of the chunk.
+        raw_text: The raw text content of the passage.
+
+    Returns:
+        A dictionary mapping ContentCategory enum values to normalized scores.
     """
     scores: Dict[ContentCategory, float] = {}
 
@@ -120,24 +124,39 @@ def score_categories(
 
 def analyze_single_passage(
     index: int,
-    passage: Passage,
+    chunk: ChunkSearchResult,
     themes: List[Theme],
     tfidf_matrix,
     passage_to_row: Dict[int, int],
     page_range: Tuple[int, int],
 ) -> PassageAnalysis:
-    """Score and categorise a single passage."""
-    retrieval_score = passage_retrieval_score(passage)
+    """Compute a comprehensive analysis for a single chunk.
+
+    Computes retrieval score, topic relevance, relative position, category
+    scores, primary category, theme membership, and word count.
+
+    Args:
+        index: The index of the chunk in the retrieved list.
+        chunk: The ChunkSearchResult to analyze.
+        themes: The list of themes discovered in the document.
+        tfidf_matrix: The TF-IDF matrix of the document chunks.
+        passage_to_row: Maps chunk indices to their TF-IDF row indices.
+        page_range: The range of page numbers across retrieved chunks.
+
+    Returns:
+        A PassageAnalysis object containing the analysis of the chunk.
+    """
+    retrieval_score = chunk.score
     topic_relevance = passage_topic_relevance(
         index, tfidf_matrix, passage_to_row,
     )
 
-    words = set(passage.text.lower().split())
-    word_count = len(passage.text.split())
-    rel_pos = relative_position(passage.page_number, page_range)
+    words = set(chunk.text.lower().split())
+    word_count = len(chunk.text.split())
+    rel_pos = relative_position(chunk.page_number, page_range)
 
     category_scores = score_categories(
-        words, rel_pos, retrieval_score, passage.text,
+        words, rel_pos, retrieval_score, chunk.text,
     )
     primary = max(category_scores, key=category_scores.get)
 
@@ -147,14 +166,35 @@ def analyze_single_passage(
 
     return PassageAnalysis(
         passage_index=index,
-        page_number=passage.page_number,
+        page_number=chunk.page_number,
         retrieval_score=round(retrieval_score, 4),
         topic_relevance=round(topic_relevance, 4),
         category_scores={k.value: round(v, 4) for k, v in category_scores.items()},
         primary_category=primary,
         theme_ids=theme_ids,
-        has_images=bool(passage.images),
-        image_count=len(passage.images),
         word_count=word_count,
         is_key_passage=False,
     )
+
+def analyze_passages(
+    chunks: List[ChunkSearchResult],
+    themes: List[Theme],
+    tfidf_matrix,
+    passage_to_row: Dict[int, int],
+) -> List[PassageAnalysis]:
+    """Analyze all chunks in the retrieved context."""
+    page_range = compute_page_range(chunks)
+
+    passage_analyses = [
+        analyze_single_passage(
+            i,
+            chunk,
+            themes,
+            tfidf_matrix,
+            passage_to_row,
+            page_range,
+        )
+        for i, chunk in enumerate(chunks)
+    ]
+
+    return passage_analyses

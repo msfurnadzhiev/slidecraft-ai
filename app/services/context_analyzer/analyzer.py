@@ -1,137 +1,206 @@
-"""Main ContentAnalyzer: orchestrates analysis and produces AnalyzedContent."""
+""" This module contains the ContentAnalyzer class which performs semantic and
+structural analysis over a RetrievedContext.
+
+The analysis pipeline extracts high-level document themes, evaluates passage 
+importance, detects relationships between passages, and groups content by 
+semantic category.
+"""
 
 from collections import defaultdict
 from typing import Dict, List, Set
 
-from app.schemas.analysis import AnalyzedContent, PassageAnalysis
-from app.schemas.context import Passage, RetrievalContext
+from app.schemas.analysis import ContextAnalysis, PassageAnalysis
+from app.schemas.context import RetrievedContext
 
-from .corpus import build_corpus, fit_tfidf
-from .passage_scoring import analyze_single_passage, compute_page_range
-from .relationships import discover_relationships
-from .themes import discover_themes
+from app.services.context_analyzer.constants import (
+    DEFAULT_MAX_THEMES,
+    DEFAULT_RELATIONSHIP_THRESHOLD,
+    DEFAULT_KEY_PASSAGE_FRACTION,
+    DEFAULT_MAX_RELATIONSHIPS,
+    KEY_PASSAGE_RETRIEVAL_WEIGHT, 
+    KEY_PASSAGE_TOPIC_RELEVANCE_WEIGHT
+)
+from app.services.context_analyzer.corpus import build_corpus, fit_tfidf
+from app.services.context_analyzer.passage_scoring import analyze_passages
+from app.services.context_analyzer.relationships import discover_relationships
+from app.services.context_analyzer.themes import discover_themes
 
+
+# Type aliases
+CategoryGroups = Dict[str, List[int]]
 
 class ContentAnalyzer:
-    """Analyse a RetrievalContext to extract themes, rank passages, categorise
-    content by document role, and discover inter-passage relationships.
+    """
+    Performs semantic analysis of a RetrievedContext.
 
-    The result is an AnalyzedContent object designed for downstream consumption
-    by the presentation planner.
+    The analyzer processes retrieved document passages and produces a
+    structured ContextAnalysis object describing:
+
+    - Major document themes discovered via TF-IDF + clustering
+    - Passage-level relevance and metadata
+    - Relationships between passages (semantic or structural)
+    - Key passages most representative of the document
+    - Grouping of passages by semantic content category
     """
 
     def __init__(
         self,
         *,
-        max_themes: int = 5,
-        relationship_threshold: float = 0.15,
-        key_passage_fraction: float = 0.4,
-        max_relationships: int = 50,
+        max_themes: int = DEFAULT_MAX_THEMES,
+        relationship_threshold: float = DEFAULT_RELATIONSHIP_THRESHOLD,
+        key_passage_fraction: float = DEFAULT_KEY_PASSAGE_FRACTION,
+        max_relationships: int = DEFAULT_MAX_RELATIONSHIPS,
     ):
+        """Initialize the ContentAnalyzer with configuration parameters."""
         self._max_themes = max_themes
         self._relationship_threshold = relationship_threshold
         self._key_passage_fraction = key_passage_fraction
         self._max_relationships = max_relationships
 
-    def analyze(self, context: RetrievalContext) -> AnalyzedContent:
-        """Perform full content analysis on a RetrievalContext.
 
-        Steps:
-            1. Build TF-IDF representation of passage texts.
-            2. Cluster passages into thematic groups (KMeans).
-            3. Score each passage: retrieval quality, topic centrality,
-               content category, and media metadata.
-            4. Discover thematic, same-page, and sequential relationships
-               between passages.
-            5. Select key passages by combined score.
+    def analyze(self, context: RetrievedContext) -> ContextAnalysis:
+        """Run the full content analysis pipeline on a RetrievedContext.
+        
+        The method orchestrates several analysis stages to transform raw
+        retrieved chunks into structured semantic insights.
         """
-        passages = context.passages
-        if not passages:
+        chunks = context.chunks
+
+        if not chunks:
             return self._empty_result(context)
 
-        corpus, corpus_indices = build_corpus(passages)
+        corpus, corpus_indices = build_corpus(chunks)
         tfidf_matrix, vectorizer = fit_tfidf(corpus)
 
         passage_to_row = {
-            passage_idx: row for row, passage_idx in enumerate(corpus_indices)
+            p_idx: row for row, p_idx in enumerate(corpus_indices)
         }
 
-        themes = discover_themes(
-            tfidf_matrix, vectorizer, corpus_indices, passages,
-            self._max_themes,
-        )
+        themes = discover_themes(tfidf_matrix, vectorizer, corpus_indices, self._max_themes)
 
-        page_range = compute_page_range(passages)
-        passage_analyses = [
-            analyze_single_passage(
-                i, p, themes, tfidf_matrix, passage_to_row, page_range,
-            )
-            for i, p in enumerate(passages)
-        ]
+        passage_analyses = analyze_passages(chunks, themes, tfidf_matrix, passage_to_row)
 
         relationships = discover_relationships(
-            passages, tfidf_matrix, passage_to_row, corpus_indices,
+            chunks,
+            tfidf_matrix,
+            corpus_indices,
             self._relationship_threshold,
             self._max_relationships,
         )
 
         key_indices = self._select_key_passages(passage_analyses)
-        for pa in passage_analyses:
-            pa.is_key_passage = pa.passage_index in key_indices
 
         category_groups = self._build_category_groups(passage_analyses)
-        total_images = sum(len(p.images) for p in passages)
 
-        return AnalyzedContent(
-            document_id=context.document_id,
-            query=context.query,
-            themes=themes,
-            passage_analyses=passage_analyses,
-            relationships=relationships,
-            key_passage_indices=sorted(key_indices),
-            category_groups=category_groups,
-            total_passages=len(passages),
-            total_images=total_images,
+        result = self._build_result(
+            context,
+            themes,
+            passage_analyses,
+            relationships,
+            key_indices,
+            category_groups,
         )
+
+        return result
 
     def _select_key_passages(
         self,
         analyses: List[PassageAnalysis],
     ) -> Set[int]:
-        """Top passages by weighted retrieval + topic relevance score."""
+        """Find and mark the most important passages in the document.
+
+        A combined importance score is computed for each passage using a
+        weighted mixture of retrieval score and topic relevance.
+
+        Args:
+            analyses: The list of PassageAnalysis objects to score.
+
+        Returns:
+            A set of passage indices that are considered key passages.
+        """
         if not analyses:
             return set()
 
+        # Compute importance score for each passage
         scored = [
             (
                 pa.passage_index,
-                pa.retrieval_score * 0.6 + pa.topic_relevance * 0.4,
+                pa.retrieval_score * KEY_PASSAGE_RETRIEVAL_WEIGHT + \
+                pa.topic_relevance * KEY_PASSAGE_TOPIC_RELEVANCE_WEIGHT,
             )
             for pa in analyses
         ]
-        scored.sort(key=lambda t: t[1], reverse=True)
+
+        # Sort passages by importance score
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        # Select the top key passages
         count = max(1, int(len(scored) * self._key_passage_fraction))
-        return {idx for idx, _ in scored[:count]}
+        key_indices = {idx for idx, _ in scored[:count]}
+        
+        # Mark key passages
+        for pa in analyses:
+            pa.is_key_passage = pa.passage_index in key_indices
+        
+        return key_indices
+
 
     @staticmethod
     def _build_category_groups(
         analyses: List[PassageAnalysis],
-    ) -> Dict[str, List[int]]:
-        groups: Dict[str, List[int]] = defaultdict(list)
+    ) -> CategoryGroups:
+        """Group passages by their primary semantic category.
+
+        Each PassageAnalysis contains a primary_category attribute describing
+        the type of content contained in the passage (e.g. introduction,
+        background, data, analysis, key_finding, conclusion).
+
+        Args:
+            analyses: The list of PassageAnalysis objects to group.
+
+        Returns:
+            A dictionary mapping primary category names to lists of passage indices.
+        """
+        groups: CategoryGroups = defaultdict(list)
+
         for pa in analyses:
             groups[pa.primary_category.value].append(pa.passage_index)
+
         return dict(groups)
 
-    @staticmethod
-    def _empty_result(context: RetrievalContext) -> AnalyzedContent:
-        return AnalyzedContent(
+
+    def _build_result(
+        self,
+        context: RetrievedContext,
+        themes,
+        passage_analyses,
+        relationships,
+        key_indices,
+        category_groups,
+    ) -> ContextAnalysis:
+        """Assemble the final ContextAnalysis object."""
+        return ContextAnalysis(
             document_id=context.document_id,
-            query=context.query,
+            options=context.options,
+            themes=themes,
+            passage_analyses=passage_analyses,
+            relationships=relationships,
+            key_passage_indices=sorted(key_indices),
+            category_groups=category_groups,
+            total_passages=len(context.chunks),
+        )
+
+
+    @staticmethod
+    def _empty_result(context: RetrievedContext) -> ContextAnalysis:
+        """Return empty analysis when there are no chunks."""
+        return ContextAnalysis(
+            document_id=context.document_id,
+            options=context.options,
             themes=[],
             passage_analyses=[],
             relationships=[],
             key_passage_indices=[],
             category_groups={},
             total_passages=0,
-            total_images=0,
         )

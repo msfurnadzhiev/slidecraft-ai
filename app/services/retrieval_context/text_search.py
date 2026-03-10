@@ -1,20 +1,13 @@
-"""Text (chunk) semantic search for document-scoped RAG.
-
-Uses sentence-transformers embeddings (384-dim vectors) to perform
-semantic similarity search over document chunks. The vector search
-runs against the chunk embedding table, and the corresponding text
-is re-extracted from the original PDF file.
-"""
+"""Text (chunk) semantic search for document-scoped RAG."""
 
 from typing import List, Tuple
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.db.crud import chunk_crud, document_crud
 from app.db.models import Chunk
-from app.services.data_ingestion import FileLoader
 from app.schemas.chunk import ChunkSearchResult
-from app.storage import FileStorage
 
 # Score = 1.0 - distance (higher = more similar)
 _SIMILARITY_OFFSET = 1.0
@@ -31,15 +24,16 @@ class TextSearch:
     from the PDF file.
     """
 
-    def __init__(self, db: Session, file_loader: FileLoader, file_storage: FileStorage):
+    def __init__(
+        self,
+        db: Session,
+    ):
         """Initialize the text search service."""
         self.db = db
-        self.file_loader = file_loader
-        self.file_storage = file_storage
 
     def search(
         self,
-        document_id: str,
+        document_id: UUID,
         query_vector: List[float],
         limit: int,
         max_distance: float,
@@ -67,7 +61,7 @@ class TextSearch:
         return self._build_results(document_id, chunk_rows)
 
     def fetch_all(
-        self, document_id: str
+        self, document_id: UUID
     ) -> List[ChunkSearchResult]:
         """
         Retrieve all chunks belonging to a document.
@@ -88,7 +82,7 @@ class TextSearch:
 
     def _build_results(
         self,
-        document_id: str,
+        document_id: UUID,
         chunk_rows: ChunkSimilarityRows
     ) -> List[ChunkSearchResult]:
         """
@@ -104,28 +98,20 @@ class TextSearch:
         Returns:
             A list of ChunkSearchResult objects.
         """
-        doc = document_crud.get_document(self.db, document_id)
-
-        if doc is None:
+        if document_crud.get_document(self.db, document_id) is None:
             raise ValueError(f"Document not found: {document_id}")
-
-        pdf_path = self.file_storage.get_absolute_path(doc.storage_path)
 
         if not chunk_rows:
             return []
 
-        chunks = [chunk for chunk, _ in chunk_rows]
-        chunk_text_map = self.file_loader.extract_chunks_text(pdf_path, chunks)
-
         results: List[ChunkSearchResult] = []
         for chunk, distance in chunk_rows:
             score = round(_SIMILARITY_OFFSET - float(distance), 4)
-            text = chunk_text_map.get(chunk.chunk_id, "")
+            text = chunk.content or ""
             results.append(
                 ChunkSearchResult(
                     chunk_id=chunk.chunk_id,
                     page_number=chunk.page_number,
-                    chunk_index=chunk.chunk_index,
                     text=text,
                     score=score,
                 )

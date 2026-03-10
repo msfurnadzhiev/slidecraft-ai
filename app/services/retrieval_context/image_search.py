@@ -1,11 +1,11 @@
 """Image semantic search for document-scoped RAG.
 
-Uses CLIP embeddings (512-dim vectors) to perform text-to-image
-cross-modal similarity search over images extracted from a document.
-The search runs against the image embedding table.
+Uses text embeddings of image descriptions (384-dim vectors) to
+perform similarity search over images extracted from a document.
 """
 
 from typing import List, Tuple
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -23,8 +23,7 @@ class ImageSearch:
     """
     Semantic search over images belonging to a single document.
 
-    This class performs vector similarity search using CLIP embeddings
-    to match text queries against stored image embeddings.
+    This class performs vector similarity search over description vectors.
     """
 
     def __init__(self, db: Session):
@@ -33,7 +32,7 @@ class ImageSearch:
 
     def search(
         self,
-        document_id: str,
+        document_id: UUID,
         query_vector: List[float],
         limit: int,
         max_distance: float | None,
@@ -60,7 +59,7 @@ class ImageSearch:
         )
         return self._build_results(image_rows)
 
-    def fetch_all(self, document_id: str) -> List[ImageSearchResult]:
+    def fetch_all(self, document_id: UUID) -> List[ImageSearchResult]:
         """
         Retrieve all images belonging to a document.
 

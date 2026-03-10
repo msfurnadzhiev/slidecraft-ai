@@ -28,16 +28,13 @@ package "Core Services" as core #FFF4E6 {
 ' ---------------- Right Column: Infrastructure + Ingestion Pipeline ----------------
 together {
     package "Infrastructure" as infra #E8F8F0 {
-        [FileStorage] as storage
         [Database (CRUD)] as db
     }
 
     package "Ingestion Pipeline" as ingestion #F5E6FF {
         [PDFLoader]
-        [TextChunker]
         [ImageExtractor]
-        [TextEmbedder]
-        [ImageEmbedder]
+        [Embedder]
     }
 }
 
@@ -51,7 +48,6 @@ api --> retriecal : search query
 
 doc_svc --> ingestion : process PDF
 doc_svc --> db : store chunks/images
-doc_svc --> storage : save files
 
 search_svc --> db : vector search
 search_svc --> ctx_assembler : raw results
@@ -62,6 +58,5 @@ planner --> generator : <<future>>
 generator --> renderer : <<future>>
 
 ingestion --> db : embeddings
-ingestion --> storage : images
 
 @enduml

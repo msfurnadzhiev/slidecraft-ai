@@ -1,6 +1,7 @@
 """CRUD operations for Document objects in the database."""
 
 from typing import List, Optional
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -27,7 +28,7 @@ def create_document(db: Session, document: DocumentCreate) -> Document:
     return db_document
 
 
-def get_document(db: Session, document_id: str) -> Optional[Document]:
+def get_document(db: Session, document_id: UUID) -> Optional[Document]:
     """
     Get a document by its ID.
 
@@ -60,7 +61,7 @@ def get_all_documents(db: Session, skip: int = 0, limit: int = 100) -> List[Docu
     return result
 
 
-def delete_document(db: Session, document_id: str) -> bool:
+def delete_document(db: Session, document_id: UUID) -> bool:
     """
     Stage a document deletion in the session.
 

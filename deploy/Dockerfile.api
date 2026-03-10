@@ -2,26 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /slidecraft
 
-ENV DOCUMENT_STORAGE_PATH=/data/documents
-# Hugging Face cache: pre-download models at build time so runtime does not hit the network
-ENV HF_HOME=/slidecraft/.cache/huggingface
-ENV TRANSFORMERS_OFFLINE=0
-ENV HF_DATASETS_OFFLINE=0
-
 COPY deploy/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Pre-download embedding models so startup never triggers a download (avoids JSONDecodeError from bad/cached responses)
-RUN mkdir -p "$HF_HOME" \
-    && python -c "\
-from transformers import CLIPModel, CLIPProcessor; \
-CLIPModel.from_pretrained('openai/clip-vit-base-patch32'); \
-CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32'); \
-" \
-    && python -c "\
-from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('sentence-transformers/all-MiniLM-L12-v2'); \
-"
 
 COPY app ./app
 

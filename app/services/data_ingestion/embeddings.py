@@ -1,118 +1,66 @@
-"""
-Two-model embedding strategy: sentence-transformers for text, CLIP for images.
+"""Embedding service – converts a single text string into a vector."""
 
-- Text chunks are embedded with all-MiniLM-L12-v2 (384-dim) for high-quality
-  text-to-text retrieval.
-- Images are embedded with CLIP ViT-B/32 (512-dim) so that a CLIP text query
-  can find visually relevant images.
+import json
+import os
+from typing import List
+from urllib import error as url_error
+from urllib import request as url_request
 
-The two vector spaces are independent — each model has its own database table
-and index.
-"""
-
-import io
-from typing import Dict, List
-
-import torch
-from PIL import Image
-from sentence_transformers import SentenceTransformer
-from transformers import CLIPModel, CLIPProcessor
-
-from app.schemas.chunk import ChunkCreate
-from app.schemas.image import ImageCreate
 from app.utils.singleton import SingletonMeta
 
+_DEFAULT_TEXT_MODEL = "BAAI/bge-small-en-v1.5"
+_DEFAULT_EMBEDDINGS_API_URL = "http://localhost:8080/v1"
 
-# Default models for text and image embeddings
-_DEFAULT_TEXT_MODEL = "sentence-transformers/all-MiniLM-L12-v2"
-_DEFAULT_CLIP_MODEL = "openai/clip-vit-base-patch32"
 
-# Maps image_id (string) to raw image bytes
-ImageBytesMap = Dict[str, bytes]
+def _embeddings_api_url() -> str:
+    return os.getenv("EMBEDDINGS_API_URL", _DEFAULT_EMBEDDINGS_API_URL)
 
-# List of floats representing the embedding
 EmbeddingVector: type = List[float]
 
-class TextEmbedder(metaclass=SingletonMeta):
-    """Sentence-transformer embeddings for text chunks (384-dim)."""
 
-    def __init__(self, model_name: str = _DEFAULT_TEXT_MODEL):
-        self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
-        self.embedding_dim: int = self.model.get_sentence_embedding_dimension()
+class Embedder(metaclass=SingletonMeta):
+    """Thin wrapper around an OpenAI-compatible embeddings endpoint."""
+
+    def __init__(
+        self,
+        text_model_name: str = _DEFAULT_TEXT_MODEL,
+        api_url: str | None = None,
+    ):
+        self.model_name = text_model_name
+        self.api_url = api_url if api_url is not None else _embeddings_api_url()
 
     def generate_embedding(self, text: str) -> EmbeddingVector:
         """Encode a single text string into a vector."""
-        return self.model.encode(text, convert_to_numpy=True).tolist()
-
-    def generate_embeddings_batch(self, texts: List[str]) -> List[EmbeddingVector]:
-        """Encode a batch of texts into vectors."""
-        embeddings = self.model.encode(texts, convert_to_numpy=True)
-        return [emb.tolist() for emb in embeddings]
-
-    def embed_chunks(self, chunks: List[ChunkCreate]) -> List[ChunkCreate]:
-        """
-        Generate embeddings for text chunks and update them in-place.
-
-        Args:
-            chunks: List of ChunkCreate objects containing text.
-
-        Returns:
-            The same list of ChunkCreate objects with 'vector' updated.
-        """
-        texts = [chunk.text for chunk in chunks]
-        vectors = self.generate_embeddings_batch(texts)
-        for chunk, vector in zip(chunks, vectors):
-            chunk.vector = vector
-        return chunks
-
-
-class ImageEmbedder(metaclass=SingletonMeta):
-    """CLIP embeddings for images (512-dim) and CLIP text queries."""
-
-    def __init__(self, model_name: str = _DEFAULT_CLIP_MODEL):
-        self.model_name = model_name
-        self.model = CLIPModel.from_pretrained(model_name)
-        self.processor = CLIPProcessor.from_pretrained(model_name)
-        self.model.eval()
-        self.embedding_dim: int = self.model.config.projection_dim  # 512
-
-    @torch.no_grad()
-    def generate_text_query_embedding(self, text: str) -> EmbeddingVector:
-        """Encode a text query via CLIP's text encoder for cross-modal search."""
-        inputs = self.processor(
-            text=[text], return_tensors="pt", padding=True, truncation=True
+        payload = {
+            "model": self.model_name,
+            "input": [text],
+        }
+        req = url_request.Request(
+            url=f"{self.api_url}/embeddings",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
-        features = self.model.get_text_features(**inputs)
-        features = features / features.norm(dim=-1, keepdim=True)
-        return features[0].tolist()
+        try:
+            with url_request.urlopen(req, timeout=30) as response:
+                raw = response.read().decode("utf-8")
+        except url_error.URLError as exc:
+            raise RuntimeError(
+                f"Failed to reach embeddings API at {self.api_url}: {exc}"
+            ) from exc
 
-    @torch.no_grad()
-    def generate_image_embeddings_batch(self, images_bytes: List[bytes]) -> List[EmbeddingVector]:
-        """Encode a batch of images (raw bytes) into CLIP image vectors."""
-        pil_images = [Image.open(io.BytesIO(b)).convert("RGB") for b in images_bytes]
-        inputs = self.processor(images=pil_images, return_tensors="pt")
-        features = self.model.get_image_features(**inputs)
-        features = features / features.norm(dim=-1, keepdim=True)
-        return features.tolist()
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Embeddings API returned invalid JSON.") from exc
 
-    def embed_images(
-        self,
-        images: List[ImageCreate],
-        image_bytes_map: ImageBytesMap,
-    ) -> List[ImageCreate]:
-        """
-        Generate CLIP image embeddings and update images in-place.
+        if isinstance(parsed, dict) and isinstance(parsed.get("data"), list):
+            return parsed["data"][0]["embedding"]
 
-        Args:
-            images: List of ImageCreate objects to embed.
-            image_bytes_map: Dict mapping image_id -> raw image bytes.
+        if isinstance(parsed, list):
+            if parsed and isinstance(parsed[0], dict) and "embedding" in parsed[0]:
+                return parsed[0]["embedding"]
+            if parsed and isinstance(parsed[0], list):
+                return parsed[0]
 
-        Returns:
-            The same list of ImageCreate objects with 'vector' updated.
-        """
-        ordered_bytes = [image_bytes_map[img.image_id] for img in images]
-        vectors = self.generate_image_embeddings_batch(ordered_bytes)
-        for img, vector in zip(images, vectors):
-            img.vector = vector
-        return images
+        raise RuntimeError("Unexpected embeddings API response format.")

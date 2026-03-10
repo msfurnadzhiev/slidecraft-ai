@@ -1,7 +1,7 @@
 """The module provides a thread-safe Singleton metaclass."""
 
 from abc import ABCMeta
-from threading import Lock
+from threading import RLock
 from typing import ClassVar
 
 
@@ -12,7 +12,7 @@ class SingletonMeta(type):
     """
 
     _instances: ClassVar[dict[type, object]] = {}
-    _lock: ClassVar[Lock] = Lock()
+    _lock: ClassVar[RLock] = RLock()
 
     def __call__(cls, *args, **kwargs):
         """Create a new instance of the class.

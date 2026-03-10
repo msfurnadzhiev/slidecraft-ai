@@ -1,8 +1,9 @@
 """This module defines the Chunk SQLAlchemy model."""
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, Index, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, Index, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 
@@ -15,35 +16,41 @@ if TYPE_CHECKING:
 class Chunk(BaseModel):
     __tablename__ = "chunks"
 
-    chunk_id: Mapped[str] = mapped_column(String, primary_key=True)
+    chunk_id: Mapped[UUID] = mapped_column(primary_key=True)
 
-    document_id: Mapped[str] = mapped_column(
-        String,
+    document_id: Mapped[UUID] = mapped_column(
         ForeignKey("documents.document_id", ondelete="CASCADE"),
         nullable=False,
     )
 
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    start_char_offset: Mapped[int] = mapped_column(Integer, nullable=False)
-    end_char_offset: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    vector: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_vector: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
 
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_vector: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+
+    # Relationships
     document: Mapped["Document"] = relationship(back_populates="chunks")
 
     __table_args__ = (
         UniqueConstraint(
             "document_id",
             "page_number",
-            "chunk_index",
-            name="unique_chunks_doc_page_chunk",
+            name="unique_document_page",
         ),
         Index(
-            "chunks_vector_idx",
-            "vector",
+            "chunks_content_vector_idx",
+            "content_vector",
             postgresql_using="hnsw",
-            postgresql_ops={"vector": "vector_cosine_ops"},
+            postgresql_ops={"content_vector": "vector_cosine_ops"},
+        ),
+        Index(
+            "chunks_summary_vector_idx",
+            "summary_vector",
+            postgresql_using="hnsw",
+            postgresql_ops={"summary_vector": "vector_cosine_ops"},
         ),
     )

@@ -2,9 +2,10 @@
 
 from enum import Enum
 from typing import Dict, List
+from uuid import UUID
 
 from app.schemas.base import BaseSchema
-from app.schemas.context import RetrievalContext
+from app.schemas.context import ContextRetrievalOptions
 
 
 class ContentCategory(str, Enum):
@@ -29,7 +30,7 @@ class Theme(BaseSchema):
 
 class PassageAnalysis(BaseSchema):
     """Per-passage analysis combining retrieval quality, topic centrality,
-    content categorisation, and media metadata."""
+    and content categorisation."""
 
     passage_index: int
     page_number: int
@@ -38,8 +39,6 @@ class PassageAnalysis(BaseSchema):
     category_scores: Dict[str, float]
     primary_category: ContentCategory
     theme_ids: List[int]
-    has_images: bool
-    image_count: int
     word_count: int
     is_key_passage: bool
 
@@ -53,23 +52,15 @@ class ContentRelationship(BaseSchema):
     relationship_type: str
 
 
-class AnalyzedContent(BaseSchema):
-    """Complete content analysis of a RetrievalContext, ready for
-    consumption by the PresentationPlanner."""
-
-    document_id: str
-    query: str | None = None
+class ContextAnalysis(BaseSchema):
+    """Analysis of the context for a document."""
+    document_id: UUID
+    options: ContextRetrievalOptions | None = None
     themes: List[Theme]
     passage_analyses: List[PassageAnalysis]
     relationships: List[ContentRelationship]
     key_passage_indices: List[int]
     category_groups: Dict[str, List[int]]
     total_passages: int
-    total_images: int
 
 
-class AnalysisResponse(BaseSchema):
-    """Search endpoint response: assembled context enriched with content analysis."""
-
-    context: RetrievalContext | None = None
-    analysis: AnalyzedContent

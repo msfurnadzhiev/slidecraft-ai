@@ -7,22 +7,35 @@ from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from app.schemas.analysis import Theme
-from app.schemas.context import Passage
 
-from .constants import MIN_PASSAGES_FOR_CLUSTERING
+from app.services.context_analyzer.constants import MIN_PASSAGES_FOR_CLUSTERING
 
 
 def discover_themes(
     tfidf_matrix,
     vectorizer: TfidfVectorizer | None,
     corpus_indices: List[int],
-    passages: List[Passage],
     max_themes: int,
 ) -> List[Theme]:
-    """Cluster passages into thematic groups via KMeans on TF-IDF."""
+    """Cluster passages into thematic groups via KMeans on TF-IDF.
+    
+    The function clusters TF-IDF passage vectors using KMeans to identify
+    coherent thematic groups. Each cluster represents a shared topic
+    across a subset of passages.
+
+    Args:
+        tfidf_matrix: The TF-IDF matrix of the document passages.
+        vectorizer: The TF-IDF vectorizer used to transform text into vectors.
+        corpus_indices: The indices of the document passages.
+        max_themes: The maximum number of themes to discover.
+
+    Returns:
+        A list of Theme objects, each representing a thematic cluster.
+    """
     if tfidf_matrix is None or vectorizer is None:
         return []
 
+    # If there are too few passages, use a single theme fallback
     if len(corpus_indices) < MIN_PASSAGES_FOR_CLUSTERING:
         return single_theme_fallback(
             vectorizer, tfidf_matrix, corpus_indices,
@@ -77,7 +90,13 @@ def single_theme_fallback(
     tfidf_matrix,
     corpus_indices: List[int],
 ) -> List[Theme]:
-    """Produce a single catch-all theme when there are too few passages."""
+    """Produce a single catch-all theme when there are too few passages.
+    
+    When the document contains too few passages to perform meaningful
+    clustering, the function creates a single theme that encompasses all
+    passages. This theme is characterized by the average TF-IDF vector of
+    all passages.
+    """
     feature_names = vectorizer.get_feature_names_out()
     mean_vector = np.asarray(tfidf_matrix.mean(axis=0)).flatten()
     top_indices = mean_vector.argsort()[::-1][:7]

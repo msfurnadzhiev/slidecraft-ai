@@ -1,25 +1,27 @@
 """Service layer for document ingestion and retrieval."""
 
 from typing import List, Optional
+from uuid import UUID, uuid4
 
+import tiktoken
 from sqlalchemy.orm import Session
 
 from app.db.crud import document_crud, chunk_crud, image_crud
 from app.services.data_ingestion import (
-    FileLoader, 
-    TextChunker,
-    TextEmbedder,
-    ImageEmbedder,
-    PDFImageExtractor
+    FileLoader,
+    Embedder,
 )
+from app.services.data_ingestion.summarizer import Summarizer
 from app.schemas.document import (
     DocumentContent,
     DocumentIngestResponse,
     DocumentResponse,
     DocumentCreate,
 )
-from app.schemas.image import ImageObject, ImageExtractionResult
-from app.storage import FileStorage, ImageStorage
+from app.schemas.chunk import ChunkCreate
+from app.schemas.image import ImageCreate
+
+from app.storage import ImageStorage
 
 
 class DocumentService:
@@ -29,25 +31,20 @@ class DocumentService:
         self,
         db: Session,
         file_loader: FileLoader,
-        text_chunker: TextChunker,
-        text_embedder: TextEmbedder,
-        image_embedder: ImageEmbedder,
-        file_storage: FileStorage,
-        image_extractor: PDFImageExtractor,
+        embedder: Embedder,
+        summarizer: Summarizer,
         image_storage: ImageStorage,
     ):
         """Initialize the document service."""
         self.db = db
         self.loader = file_loader
-        self.chunker = text_chunker
-        self.text_embedder = text_embedder
-        self.image_embedder = image_embedder
-        self.storage = file_storage
-        self.image_extractor = image_extractor
+        self.embedder = embedder
+        self.summarizer = summarizer
         self.image_storage = image_storage
+        self.encoding = tiktoken.get_encoding("cl100k_base")
 
     def ingest_document(self, file_path: str, original_filename: str) -> DocumentIngestResponse:
-        """Ingest a document (PDF) and store it with chunks, embeddings, and images.
+        """Ingest a document (PDF) and store extracted content in the database.
         
         Args:
             file_path: Path to the document file.
@@ -57,66 +54,103 @@ class DocumentService:
             DocumentIngestResponse: Response containing the document ingestion details.
         """
         document_content = self.loader.load_file(file_path)
-        metadata = self.loader.extract_metadata(file_path)
-        document_id = document_content.document_id
-
-        # Compute storage path
-        doc_storage_path = self.storage.relative_path(document_id, original_filename)
-
-        # Stage document in the database
+    
+        # Create document in the database
         document_create = DocumentCreate(
-            document_id=document_id,
+            document_id=document_content.document_id,
             file_name=original_filename,
             total_pages=document_content.total_pages,
-            storage_path=doc_storage_path,
-            metadata=metadata,
+            metadata=document_content.metadata,
         )
+
         db_document = document_crud.create_document(self.db, document_create)
 
         # Process text and image content
-        num_chunks_created = self._extract_chunks(document_id, document_content)
-        num_images_created = self._extract_images(file_path, document_id)
-
-        # Save PDF file to storage
-        self.storage.save(
-            source_path=file_path,
-            document_id=document_id,
-            filename=original_filename,
-        )
+        num_chunks_created = self._chunks_processing(document_content)
+        num_images_created = self._images_processing(document_content)
 
         return DocumentIngestResponse(
             document_id=db_document.document_id,
             file_name=db_document.file_name,
             metadata=db_document.metadata_,
             total_pages=db_document.total_pages,
-            storage_path=db_document.storage_path,
             chunks=num_chunks_created,
             images=num_images_created,
         )
 
-    def _extract_chunks(self, document_id: str, document_content: DocumentContent) -> int:
-        """Chunk document text, generate embeddings, and store in the database."""
-        chunk_creates = self.chunker.chunk_document(document_content)
-        if not chunk_creates:
-            return 0
+    def _chunks_processing(self, document_content: DocumentContent) -> int:
+        """Process chunks of a document and store in the database."""
 
-        self.text_embedder.embed_chunks(chunk_creates)
-        chunk_crud.create_chunks(self.db, chunk_creates)
-        return len(chunk_creates)
+        # TODO: re-enable summarization when rate limits are not an issue
+        # page_texts = [p.text for p in pages]
+        # summaries = self.summarizer.summarize_texts(page_texts)
 
-    def _extract_images(self, file_path: str, document_id: str) -> int:
-        """Extract images, generate CLIP embeddings, and store in the database."""
-        extraction: ImageExtractionResult = self.image_extractor.extract_images(
-            file_path, document_id, self.image_storage
-        )
-        if not extraction.images:
-            return 0
+        chunks_creates: List[ChunkCreate] = []
 
-        self.image_embedder.embed_images(extraction.images, extraction.image_bytes)
-        image_crud.create_images(self.db, extraction.images)
-        return len(extraction.images)
+        for page in document_content.pages:
+            chunk_id = uuid4()
+            token_count = len(self.encoding.encode(page.text))
 
-    def get_document(self, document_id: str) -> Optional[DocumentResponse]:
+            content_vector = self.embedder.generate_embedding(page.text)
+
+            chunk = ChunkCreate(
+                chunk_id=chunk_id,
+                document_id=document_content.document_id,
+                page_number=page.page_number,
+                token_count=token_count,
+                content=page.text,
+                content_vector=content_vector,
+                summary="",
+                summary_vector=[0.0] * 384,
+            )
+            chunks_creates.append(chunk)
+
+        db_chunks = chunk_crud.create_chunks(self.db, chunks_creates)
+
+        return len(db_chunks)
+
+    def _images_processing(self, document_content: DocumentContent) -> int:
+        """Process images of a document and store in the database.
+
+        NOTE: Image description generation is disabled for now.
+        Images are stored but without LLM-generated descriptions.
+        """
+
+        image_creates: List[ImageCreate] = []
+
+        for raw_image in document_content.images:
+
+            image_id = uuid4()
+
+            # TODO: re-enable when vision model is available
+            # description = self.summarizer.describe_image(
+            #     raw_image.image_bytes, mime_type=raw_image.image_mime_type,
+            # )
+            # description_vector = self.embedder.generate_embedding(description)
+
+            storage_path = self.image_storage.save_bytes(
+                document_id=str(document_content.document_id),
+                filename=raw_image.file_name,
+                data=raw_image.image_bytes,
+            )
+
+            image = ImageCreate(
+                image_id=image_id,
+                document_id=document_content.document_id,
+                page_number=raw_image.page_number,
+                file_name=raw_image.file_name,
+                storage_path=storage_path,
+                description="",
+                description_vector=[0.0] * 384,
+            )
+
+            image_creates.append(image)
+
+        db_images = image_crud.create_images(self.db, image_creates)
+
+        return len(db_images)
+
+    def get_document(self, document_id: UUID) -> Optional[DocumentResponse]:
         """Retrieve a document by its ID."""
         document = document_crud.get_document(self.db, document_id)
         if not document:
@@ -125,25 +159,8 @@ class DocumentService:
             document_id=document.document_id,
             file_name=document.file_name,
             total_pages=document.total_pages,
-            storage_path=document.storage_path,
             metadata=document.metadata_,
         )
-
-    def get_document_images(self, document_id: str) -> List[ImageObject]:
-        """Retrieve all images associated with a document."""
-        if not document_crud.get_document(self.db, document_id):
-            return []
-        images = image_crud.get_images_by_document(self.db, document_id)
-        return [
-            ImageObject(
-                image_id=img.image_id,
-                document_id=img.document_id,
-                storage_path=img.storage_path,
-                page_number=img.page_number,
-                file_name=img.file_name,
-            )
-            for img in images
-        ]
 
     def list_documents(self, skip: int = 0, limit: int = 100) -> List[DocumentResponse]:
         """List all documents with optional pagination."""
@@ -153,19 +170,17 @@ class DocumentService:
                 document_id=doc.document_id,
                 file_name=doc.file_name,
                 total_pages=doc.total_pages,
-                storage_path=doc.storage_path,
             )
             for doc in documents
         ]
 
-    def delete_document(self, document_id: str) -> bool:
-        """Delete a document along with all associated chunks, embeddings, and stored files."""
+    def delete_document(self, document_id: UUID) -> bool:
+        """Delete a document along with all associated chunks, embeddings, and images."""
         document = document_crud.get_document(self.db, document_id)
         if document is None:
             return False
 
         # Gather associated files
-        file_name = document.file_name
         images = image_crud.get_images_by_document(self.db, document_id)
         image_names = [img.file_name for img in images]
 
@@ -174,8 +189,8 @@ class DocumentService:
         self.db.flush()
 
         # Delete stored files
+        doc_id_str = str(document_id)
         for image_name in image_names:
-            self.image_storage.delete(document_id, image_name)
-        self.storage.delete(document_id, file_name)
+            self.image_storage.delete(doc_id_str, image_name)
 
         return True

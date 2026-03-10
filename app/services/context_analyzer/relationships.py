@@ -1,17 +1,16 @@
-"""Discovery of thematic, same-page, and sequential relationships between passages."""
+"""Discovery of thematic, same-page, and sequential relationships between chunks."""
 
-from typing import Dict, List
+from typing import List
 
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.schemas.analysis import ContentRelationship
-from app.schemas.context import Passage
+from app.schemas.chunk import ChunkSearchResult
 
 
 def discover_relationships(
-    passages: List[Passage],
+    chunks: List[ChunkSearchResult],
     tfidf_matrix,
-    passage_to_row: Dict[int, int],
     corpus_indices: List[int],
     relationship_threshold: float,
     max_relationships: int,
@@ -37,11 +36,11 @@ def discover_relationships(
         (r.source_index, r.target_index) for r in relationships
     }
 
-    for i in range(len(passages)):
-        for j in range(i + 1, len(passages)):
+    for i in range(len(chunks)):
+        for j in range(i + 1, len(chunks)):
             if (i, j) in thematic_pairs:
                 continue
-            pi, pj = passages[i].page_number, passages[j].page_number
+            pi, pj = chunks[i].page_number, chunks[j].page_number
             if pi == pj:
                 relationships.append(
                     ContentRelationship(

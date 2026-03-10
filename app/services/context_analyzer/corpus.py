@@ -1,20 +1,20 @@
-"""Corpus building and TF-IDF for passage text."""
+"""Corpus building and TF-IDF for chunk text."""
 
 from typing import List, Tuple
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from app.schemas.context import Passage
+from app.schemas.chunk import ChunkSearchResult
 
 
 def build_corpus(
-    passages: List[Passage],
+    chunks: List[ChunkSearchResult],
 ) -> Tuple[List[str], List[int]]:
-    """Return (texts, passage_indices) for passages with non-empty text."""
+    """Return (texts, chunk_indices) for chunks with non-empty text."""
     corpus: List[str] = []
     indices: List[int] = []
-    for i, p in enumerate(passages):
-        text = p.text.strip()
+    for i, c in enumerate(chunks):
+        text = c.text.strip()
         if text:
             corpus.append(text)
             indices.append(i)

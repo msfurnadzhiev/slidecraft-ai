@@ -1,25 +1,29 @@
 """Context router: retrieve context for a document."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Body, HTTPException
 
-from app.api.dependencies import ContextAssembler, ContextRetriever
-from app.schemas.context import ContextRequest, RetrievalContext
+from app.api.dependencies import ContentAnalyzer, ContextRetriever
+from app.schemas.analysis import ContextAnalysis
+from app.schemas.context import ContextRetrievalOptions, RetrievedContext, RetrievedContext
 
 router = APIRouter(prefix="/context", tags=["context"])
 
 
-@router.post("/{document_id}", response_model=RetrievalContext)
-def search_with_context(
-    document_id: str,
+
+@router.post("/{document_id}", response_model=RetrievedContext)
+def retrieve_context(
+    document_id: UUID,
     context_retriever: ContextRetriever,
-    context_assembler: ContextAssembler,
-    request: ContextRequest | None = Body(None),
-) -> RetrievalContext:
+    options: ContextRetrievalOptions | None = Body(None),
+) -> RetrievedContext:
     """Retrieve document content with optional semantic search.
 
     Args:
         document_id: Target document (path parameter).
-        request: Optional SearchRequest body with query, limits, and thresholds.
+        context_retriever: Retriever to retrieve the context.
+        options: Optional ContextRetrievalOptions body with query, limits, and thresholds.
 
     Raises:
         HTTPException: If the document is not found.
@@ -28,23 +32,39 @@ def search_with_context(
         ContextWithAnalysis containing ordered passages and content analysis.
     """
     try:
-        raw_context = context_retriever.retrieve_context(document_id, request)
+        retrieved_context: RetrievedContext = \
+            context_retriever.retrieve_context(document_id, options)
 
-        return context_assembler.assemble(raw_context)
+        return retrieved_context
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
-# @router.get("/{document_id}/analysis", response_model=RetrievalContext)
-# def get_context_analysis(
-#     document_id: str,
-#     context_assembler: ContextAssembler,
-#     context_retriever: ContextRetriever,
-#     content_analyzer: ContentAnalyzer,
-# ) -> RetrievalContext:
-#     """Get the analysis of the context for a document."""
-#     try:
-#         raw_context = context_retriever.retrieve_context(document_id)
-#         return context_assembler.assemble(raw_context)
-#     except ValueError as e:
-#         raise HTTPException(status_code=404, detail=str(e))
+@router.post("/{document_id}/analysis", response_model=ContextAnalysis)
+def analyze_context(
+    document_id: str,
+    context_retriever: ContextRetriever,
+    content_analyzer: ContentAnalyzer,
+    options: ContextRetrievalOptions | None = Body(None),
+) -> ContextAnalysis:
+    """Analyze the context for a document and return the analysis.
+    
+    Args:
+        document_id: Target document (path parameter).
+        context_retriever: Retriever to retrieve the context.
+        content_analyzer: Analyzer to analyze the context.
+        options: Optional ContextRetrievalOptions body with query, limits, and thresholds.
+
+    Returns:
+        ContextAnalysis containing the analysis.
+    """
+    try:
+        retrieved_context: RetrievedContext = \
+            context_retriever.retrieve_context(document_id, options)
+
+        analyzed_context: ContextAnalysis = \
+            content_analyzer.analyze(retrieved_context)
+
+        return analyzed_context
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

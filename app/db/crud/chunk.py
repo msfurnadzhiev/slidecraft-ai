@@ -1,6 +1,7 @@
 """CRUD operations for Chunk objects in the database."""
 
 from typing import List, Optional, Tuple
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -20,14 +21,12 @@ def create_chunks(db: Session, chunks: List[ChunkCreate]) -> List[Chunk]:
     Returns:
         List of created Chunk instances (not yet committed).
     """
-    db_chunks: List[Chunk] = [
-        Chunk(**chunk.model_dump(exclude={"text"})) for chunk in chunks
-    ]
+    db_chunks: List[Chunk] = [Chunk(**chunk.model_dump()) for chunk in chunks]
     db.add_all(db_chunks)
     return db_chunks
 
 
-def get_chunks_by_document(db: Session, document_id: str) -> List[Chunk]:
+def get_chunks_by_document(db: Session, document_id: UUID) -> List[Chunk]:
     """
     Return all chunks for a document, ordered by page and chunk index.
 
@@ -41,7 +40,7 @@ def get_chunks_by_document(db: Session, document_id: str) -> List[Chunk]:
     stmt = (
         select(Chunk)
         .where(Chunk.document_id == document_id)
-        .order_by(Chunk.page_number, Chunk.chunk_index)
+        .order_by(Chunk.page_number)
     )
     return list(db.execute(stmt).scalars().all())
 
@@ -49,7 +48,7 @@ def get_chunks_by_document(db: Session, document_id: str) -> List[Chunk]:
 def search_similar(
     db: Session,
     query_vector: List[float],
-    document_id: str,
+    document_id: UUID,
     limit: Optional[int] = None,
     max_distance: Optional[float] = None,
 ) -> List[Tuple[Chunk, float]]:
@@ -66,12 +65,12 @@ def search_similar(
     Returns:
         List of tuples: (Chunk, distance)
     """
-    distance_expr = Chunk.vector.cosine_distance(query_vector)
+    distance_expr = Chunk.content_vector.cosine_distance(query_vector)
 
     stmt = (
         select(Chunk, distance_expr.label("distance"))
         .where(Chunk.document_id == document_id)
-        .where(Chunk.vector.isnot(None))
+        .where(Chunk.content_vector.isnot(None))
     )
 
     if max_distance is not None:
