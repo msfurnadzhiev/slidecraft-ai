@@ -14,7 +14,8 @@ from src.services.data_ingestion import (
     FileLoader,
     TextEmbedder,
 )
-from src.services.data_ingestion.summarizer import Summarizer
+from src.services.data_ingestion.content_summarizer import ContentSummarizer
+from src.services.data_ingestion.image_describer import ImageDescriber
 from src.schemas.document import (
     DocumentContent,
     DocumentIngestResponse,
@@ -35,7 +36,8 @@ class DocumentService:
         db: Session,
         file_loader: FileLoader,
         embedder: TextEmbedder,
-        summarizer: Summarizer,
+        summarizer: ContentSummarizer,
+        image_describer: ImageDescriber,
         image_storage: ImageStorage,
     ):
         """Initialize the document service."""
@@ -43,6 +45,7 @@ class DocumentService:
         self.loader = file_loader
         self.embedder = embedder
         self.summarizer = summarizer
+        self.image_describer = image_describer
         self.image_storage = image_storage
         self.encoding = tiktoken.get_encoding("cl100k_base")
 
@@ -157,11 +160,11 @@ class DocumentService:
         return len(db_chunks)
 
     def _images_processing(self, document_content: DocumentContent) -> int:
-        """Process images of a document and store in the database.
+        """Process images of a document: describe, embed, store in the database."""
 
-        NOTE: Image description generation is disabled for now.
-        Images are stored but without LLM-generated descriptions.
-        """
+        _VECTOR_DIM = 384
+        _ZERO_VECTOR = [0.0] * _VECTOR_DIM
+
         images = document_content.images
         if not images:
             log.info("No images to process for document %s.", document_content.document_id)
@@ -169,17 +172,21 @@ class DocumentService:
 
         log.info("Processing %d image(s) for document %s.", len(images), document_content.document_id)
 
+        image_pairs = [(img.image_bytes, img.image_mime_type) for img in images]
+        descriptions = self.image_describer.describe_images(image_pairs)
+
+        description_vectors = []
+        for idx, desc in enumerate(descriptions):
+            if desc:
+                log.debug("Embedding description for image %d.", idx + 1)
+                description_vectors.append(self.embedder.generate_embedding(desc))
+            else:
+                log.debug("Image %d has no description – using zero vector.", idx + 1)
+                description_vectors.append(_ZERO_VECTOR)
+
         image_creates: List[ImageCreate] = []
 
-        for raw_image in images:
-            image_id = uuid4()
-
-            # TODO: re-enable when vision model is available
-            # description = self.summarizer.describe_image(
-            #     raw_image.image_bytes, mime_type=raw_image.image_mime_type,
-            # )
-            # description_vector = self.embedder.generate_embedding(description)
-
+        for idx, raw_image in enumerate(images):
             storage_path = self.image_storage.save_bytes(
                 document_id=str(document_content.document_id),
                 filename=raw_image.file_name,
@@ -191,13 +198,13 @@ class DocumentService:
             )
 
             image = ImageCreate(
-                image_id=image_id,
+                image_id=uuid4(),
                 document_id=document_content.document_id,
                 page_number=raw_image.page_number,
                 file_name=raw_image.file_name,
                 storage_path=storage_path,
-                description="",
-                description_vector=[0.0] * 384,
+                description=descriptions[idx],
+                description_vector=description_vectors[idx],
             )
 
             image_creates.append(image)

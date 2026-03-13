@@ -47,19 +47,19 @@ class ContextRetriever:
                 limit=options.chunk_limit,
                 max_distance=max_distance_chunk,
             )
-            # images = self.image_search.search(
-            #     document_id=document_id,
-            #     query_vector=image_vector,
-            #     limit=options.image_limit,
-            #     max_distance=max_distance_image,
-            # )
+            images = self.image_search.search(
+                document_id=document_id,
+                query_vector=image_vector,
+                limit=options.image_limit,
+                max_distance=max_distance_image,
+            )
         else:
             chunks = self.text_search.fetch_all(document_id)
-            # images = self.image_search.fetch_all(document_id)
+            images = self.image_search.fetch_all(document_id)
 
         return RetrievedContext(
             document_id=document_id,
             options=options if options else None,
             chunks=chunks,
-            # images=images,
+            images=images,
         )

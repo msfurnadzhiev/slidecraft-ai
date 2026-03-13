@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, HTTPException
 
 from src.api.dependencies import ContentAnalyzer, ContextRetriever
 from src.schemas.analysis import ContextAnalysis
-from src.schemas.context import ContextRetrievalOptions, RetrievedContext, RetrievedContext
+from src.schemas.context import ContextRetrievalOptions, RetrievedContext
 
 router = APIRouter(prefix="/context", tags=["context"])
 

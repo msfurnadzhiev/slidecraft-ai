@@ -27,3 +27,4 @@ class ImageSearchResult(BaseSchema):
     storage_path: str
     file_name: str
     score: float
+    description: Optional[str] = None

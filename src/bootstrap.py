@@ -14,7 +14,8 @@ from src.services.data_ingestion import (
     PDFLoader,
     TextEmbedder,
 )
-from src.services.data_ingestion.summarizer import Summarizer
+from src.services.data_ingestion.content_summarizer import ContentSummarizer
+from src.services.data_ingestion.image_describer import ImageDescriber
 from src.services.context_analyzer import ContentAnalyzer as ContentAnalyzerClass
 from src.services.retrieval_context import ContextRetriever as ContextRetrieverClass
 from src.services.retrieval_context import TextSearch as TextSearchClass
@@ -25,7 +26,8 @@ from src.services.data_ingestion.document_service import (
 from src.storage import LocalImageStorage
 
 embedder = TextEmbedder.get_instance()
-summarizer = Summarizer.get_instance()
+summarizer = ContentSummarizer.get_instance()
+image_describer = ImageDescriber.get_instance()
 file_loader = PDFLoader.get_instance()
 image_storage = LocalImageStorage.get_instance()
 
@@ -47,6 +49,7 @@ def get_document_service(db: Session = Depends(get_db)) -> DocumentServiceClass:
         file_loader=file_loader,
         embedder=embedder,
         summarizer=summarizer,
+        image_describer=image_describer,
         image_storage=image_storage,
     )
 

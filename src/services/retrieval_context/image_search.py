@@ -104,6 +104,7 @@ class ImageSearch:
                     storage_path=image.storage_path,
                     file_name=image.file_name,
                     score=score,
+                    description=image.description,
                 )
             )
         return results

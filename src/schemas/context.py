@@ -26,4 +26,4 @@ class RetrievedContext(BaseSchema):
     document_id: UUID
     options: ContextRetrievalOptions | None = None
     chunks: List[ChunkSearchResult]
-    # images: List[ImageSearchResult]
+    images: List[ImageSearchResult]
