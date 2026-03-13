@@ -15,6 +15,7 @@ services:
     env_file:
       - ../.env
     environment:
+      PYTHONUNBUFFERED: "1"
       DATABASE_URL: postgresql://postgres:postgres@db:5432/slidecraft
       IMAGE_STORAGE_PATH: /data/images
       EMBEDDINGS_API_URL: http://embeddings:80/v1
