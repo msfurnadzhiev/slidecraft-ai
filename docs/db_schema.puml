@@ -10,30 +10,29 @@ entity "documents" as documents {
   * document_id : VARCHAR
   --
   file_name : VARCHAR (NOT NULL)
-  storage_path : VARCHAR (NOT NULL)
   total_pages : INTEGER (NOT NULL)
   metadata : JSON
 }
 
 ' ------------------
 ' Chunks Table
-' sentence-transformers embeddings, 384-dim
+' Text embeddings via embeddings API, 384-dim
 ' ------------------
 entity "chunks" as chunks {
   * chunk_id : VARCHAR
   --
   document_id : VARCHAR (FK, NOT NULL)
   page_number : INTEGER (NOT NULL)
-  chunk_index : INTEGER (NOT NULL)
   token_count : INTEGER (NOT NULL)
-  start_char_offset : INTEGER (NOT NULL)
-  end_char_offset : INTEGER (NOT NULL)
-  vector : VECTOR(384)
+  content : TEXT
+  summary : TEXT
+  content_vector : VECTOR(384)
+  summary_vector : VECTOR(384)
 }
 
 ' ------------------
 ' Images Table
-' CLIP ViT-B/32 embeddings, 512-dim
+' Image description embeddings via embeddings API, 384-dim
 ' ------------------
 entity "images" as images {
   * image_id : VARCHAR
@@ -42,7 +41,8 @@ entity "images" as images {
   storage_path : VARCHAR (NOT NULL)
   page_number : INTEGER (NOT NULL)
   file_name : VARCHAR (NOT NULL)
-  vector : VECTOR(512)
+  description : TEXT
+  description_vector : VECTOR(384)
 }
 
 ' ------------------

@@ -10,18 +10,15 @@ An agentic application that generates professional presentations from source doc
 
 **Components**:
 - **PDFLoader** (`FileLoader`): Extracts text content from PDF documents using PyMuPDF
-- **TextChunker**: Splits document text into semantic chunks with overlap tracking
-- **PDFImageExtractor**: Extracts images from PDF pages
-- **TextEmbedder**: Generates 384-dim embeddings using sentence-transformers
-- **ImageEmbedder**: Generates 512-dim embeddings using CLIP ViT-B/32
+- **Embedder**: Generates text embeddings for chunks and image descriptions
 - **Storage**: File and image storage with volume persistence
 
 ### Phase 2: RAG Retrieval + Context Assembly
 
 **Components**:
 - **SearchService**: Performs semantic search over both text chunks (384-dim) and images (512-dim)
-  - Text-to-text search using sentence-transformers
-  - Text-to-image cross-modal search using CLIP
+  - Text-to-text search over chunk vectors
+  - Text-to-description search over image description vectors
   - Configurable limits and similarity thresholds
   
 - **ContextAssembler**: Transforms raw search results into structured, document-ordered context
@@ -39,7 +36,7 @@ An agentic application that generates professional presentations from source doc
 **Components to Build**:
 
 1. **ContentAnalyzer**
-   - Analyzes `RetrievalContext` to identify key themes, topics, and concepts
+   - Analyzes `RetrievedContext` to identify key themes, topics, and concepts
    - Extracts main ideas, supporting details, and relationships
    - Identifies which passages/images are most relevant for presentation
    - Categorizes content by type (introduction, data, conclusions, etc.)

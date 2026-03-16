@@ -11,12 +11,15 @@ services:
       - "8000:8000"
     depends_on:
       - db
+      - embeddings
+    env_file:
+      - ../.env
     environment:
+      PYTHONUNBUFFERED: "1"
       DATABASE_URL: postgresql://postgres:postgres@db:5432/slidecraft
-      DOCUMENT_STORAGE_PATH: /data/documents
       IMAGE_STORAGE_PATH: /data/images
+      EMBEDDINGS_API_URL: http://embeddings:80/v1
     volumes:
-      - documents:/data/documents
       - images:/data/images
 
   db:
@@ -31,7 +34,20 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  embeddings:
+    container_name: slidecraft-embeddings
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    ports:
+      - "8080:80"
+    command:
+      - --model-id
+      - BAAI/bge-small-en-v1.5
+    environment:
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+    volumes:
+      - hf_cache:/data
+
 volumes:
   pgdata:
-  documents:
   images:
+  hf_cache:
