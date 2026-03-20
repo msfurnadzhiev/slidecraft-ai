@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, UploadFile, HTTPException
 
 from src.api.dependencies import DocumentService
-from src.schemas.document import DocumentIngestResponse, DocumentResponse
+from src.schemas.document.document import DocumentIngestResponse, DocumentResponse
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 

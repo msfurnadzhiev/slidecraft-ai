@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from src.db.models import Image
-from src.schemas.image import ImageCreate
+from src.schemas.document.image import ImageCreate
 
 
 def create_images(db: Session, images: List[ImageCreate]) -> List[Image]:
@@ -46,38 +46,53 @@ def search_similar(
     db: Session,
     query_vector: List[float],
     document_id: UUID,
-    limit: Optional[int] = None,
-    max_distance: Optional[float] = None,
-) -> List[Tuple[Image, float]]:
+    limit: int = 10,
+    max_distance: float = 0.5,
+) -> List[Tuple["Image", float]]:
     """
-    Return images most similar to query_vector using cosine distance.
+    Hybrid image similarity search:
+    - Stage 1: ANN search using description_vector (HNSW index)
+    - Stage 2: Optionally filter by max_distance and return top results
 
     Args:
-        db: SQLAlchemy session.
+        db: SQLAlchemy Session.
         query_vector: Query embedding vector.
-        document_id: Document ID to filter images.
+        document_id: The document ID to restrict search.
         limit: Maximum number of results.
-        max_distance: Optional maximum cosine distance filter.
+        max_distance: Maximum distance threshold (smaller = closer match).
 
     Returns:
         List of tuples: (Image, distance)
     """
-    distance_expr = Image.description_vector.cosine_distance(query_vector)
+    # Constants for similarity search
+    _CANDIDATE_MULTIPLIER = 5
+
+    # Stage 1: retrieve top candidates using HNSW index
+    candidate_limit = limit * _CANDIDATE_MULTIPLIER
 
     stmt = (
-        select(Image, distance_expr.label("distance"))
+        select(
+            Image,
+            Image.description_vector.cosine_distance(query_vector).label("distance"),
+        )
         .where(Image.document_id == document_id)
         .where(Image.description_vector.isnot(None))
+        .order_by(Image.description_vector.cosine_distance(query_vector))
+        .limit(candidate_limit)
     )
 
-    if max_distance is not None:
-        stmt = stmt.where(distance_expr <= max_distance)
+    candidates = db.execute(stmt).all()
 
-    stmt = stmt.order_by(distance_expr)
+    # Stage 2: Optionally filter by max_distance and return top results
+    results: List[Tuple["Image", float]] = []
 
-    if limit is not None:
-        stmt = stmt.limit(limit)
+    for row in candidates:
+        image = row.Image
+        distance = float(row.distance)
 
-    results = db.execute(stmt).all()
+        if distance <= max_distance:
+            results.append((image, distance))
 
-    return [(row.Image, float(row.distance)) for row in results]
+    results.sort(key=lambda x: x[1])
+
+    return results[:limit]

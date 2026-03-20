@@ -10,24 +10,19 @@ from sqlalchemy.orm import Session
 
 from src.db.init import init_db
 from src.db.session import get_db as _get_db
-from src.services.data_ingestion import (
-    PDFLoader,
-    TextEmbedder,
-)
-from src.services.data_ingestion.content_summarizer import ContentSummarizer
-from src.services.data_ingestion.image_describer import ImageDescriber
-from src.services.context_analyzer import ContentAnalyzer as ContentAnalyzerClass
-from src.services.retrieval_context import ContextRetriever as ContextRetrieverClass
-from src.services.retrieval_context import TextSearch as TextSearchClass
-from src.services.retrieval_context import ImageSearch as ImageSearchClass
-from src.services.data_ingestion.document_service import (
-    DocumentService as DocumentServiceClass,
-)
-from src.storage import LocalImageStorage
+from src.infrastructure.loaders import PDFLoader
+from src.infrastructure.embeddings import TextEmbedder
+from src.infrastructure.storage import LocalImageStorage
+from src.agents.content_summarizer_agent import ContentSummarizerAgent
+from src.agents.image_describer_agent import ImageDescriberAgent
+from src.services.ingestion.document import DocumentService as DocumentServiceClass
+from src.agents import PresentationStructureAgent as PresentationStructureAgentClass
+from src.agents import ContentGeneratorAgent as ContentGeneratorAgentClass
+from src.services.retrieval.semantic_search import SemanticSearchSevice
 
 embedder = TextEmbedder.get_instance()
-summarizer = ContentSummarizer.get_instance()
-image_describer = ImageDescriber.get_instance()
+summarizer = ContentSummarizerAgent.get_instance()
+image_describer = ImageDescriberAgent.get_instance()
 file_loader = PDFLoader.get_instance()
 image_storage = LocalImageStorage.get_instance()
 
@@ -54,28 +49,23 @@ def get_document_service(db: Session = Depends(get_db)) -> DocumentServiceClass:
     )
 
 
-def get_context_retriever(db: Session = Depends(get_db)) -> ContextRetrieverClass:
-    """Build ContextRetriever with both embedders for chunk + image search."""
-    text_search = TextSearchClass(
-        db=db,
-    )
-    image_search = ImageSearchClass(db=db)
-
-    return ContextRetrieverClass(
-        text_search=text_search,
-        image_search=image_search,
-        embedder=embedder,
-    )
+def get_presentation_structure_agent() -> PresentationStructureAgentClass:
+    """Build PresentationStructureAgent for suggesting presentation outlines."""
+    return PresentationStructureAgentClass()
 
 
-def get_search_service(
-    context_retriever: ContextRetrieverClass = Depends(get_context_retriever),
-) -> ContextRetrieverClass:
-    """Backwards-compatible alias for search dependency."""
-    return context_retriever
+def get_semantic_search_service(
+    db: Session = Depends(get_db),
+) -> SemanticSearchSevice:
+    """Build SemanticSearchSevice for semantic search over content and images."""
+    search_service = SemanticSearchSevice(db=db)
+    search_service.db = db
+    return search_service
 
 
-
-def get_content_analyzer() -> ContentAnalyzerClass:
-    """Build ContentAnalyzer for extracting themes and categorising passages."""
-    return ContentAnalyzerClass()
+def get_content_generator_agent(
+    db: Session = Depends(get_db),
+) -> ContentGeneratorAgentClass:
+    """Build ContentGeneratorAgent for generating slide content."""
+    search_service = get_semantic_search_service(db=db)
+    return ContentGeneratorAgentClass(search_service=search_service)

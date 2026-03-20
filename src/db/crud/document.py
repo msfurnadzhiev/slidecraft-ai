@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from src.db.models import Document
-from src.schemas.document import DocumentCreate
+from src.schemas.document.document import DocumentCreate
 
 
 def create_document(db: Session, document: DocumentCreate) -> Document:

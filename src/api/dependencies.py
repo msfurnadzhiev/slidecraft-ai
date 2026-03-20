@@ -9,20 +9,21 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from src.bootstrap import (
-    get_content_analyzer,
-    get_context_retriever,
     get_db,
     get_document_service,
-    get_search_service,
+    get_presentation_structure_agent,
+    get_content_generator_agent,
 )
-from src.services.context_analyzer import ContentAnalyzer as ContentAnalyzerClass
-from src.services.data_ingestion.document_service import (
-    DocumentService as DocumentServiceClass,
-)
-from src.services.retrieval_context import ContextRetriever as ContextRetrieverClass
+from src.agents import PresentationStructureAgent as PresentationStructureAgentClass
+from src.agents import ContentGeneratorAgent as ContentGeneratorAgentClass
+from src.services.ingestion.document import DocumentService as DocumentServiceClass
 
 Database = Annotated[Session, Depends(get_db)]
 DocumentService = Annotated[DocumentServiceClass, Depends(get_document_service)]
-SearchService = Annotated[ContextRetrieverClass, Depends(get_search_service)]
-ContextRetriever = Annotated[ContextRetrieverClass, Depends(get_context_retriever)]
-ContentAnalyzer = Annotated[ContentAnalyzerClass, Depends(get_content_analyzer)]
+PresentationStructureAgent = Annotated[
+    PresentationStructureAgentClass, Depends(get_presentation_structure_agent)
+]
+ContentGeneratorAgent = Annotated[
+    ContentGeneratorAgentClass,
+    Depends(get_content_generator_agent),
+]

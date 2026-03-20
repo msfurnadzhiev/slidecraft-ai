@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, Index, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, Index, text, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 
@@ -46,11 +46,13 @@ class Chunk(BaseModel):
             "content_vector",
             postgresql_using="hnsw",
             postgresql_ops={"content_vector": "vector_cosine_ops"},
+            postgresql_where=text("content_vector IS NOT NULL")
         ),
         Index(
             "chunks_summary_vector_idx",
             "summary_vector",
             postgresql_using="hnsw",
             postgresql_ops={"summary_vector": "vector_cosine_ops"},
+            postgresql_where=text("summary_vector IS NOT NULL")
         ),
     )
