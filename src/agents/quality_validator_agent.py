@@ -1,33 +1,4 @@
-"""Agent that validates the quality of a slide assignment.
-
-TODO: Implement QualityValidatorAgent as a full LLM agent.
-
-Implementation notes
---------------------
-When ready to implement, convert this class to extend :class:`BaseAgent`:
-
-    class QualityValidatorAgent(BaseAgent, name="quality-validator"):
-        ...
-
-and register the model in ``src/agents/core/agent_models.py``:
-
-    AGENT_MODELS["quality-validator"] = os.getenv("QUALITY_VALIDATOR_AGENT_MODEL_NAME")
-
-and expose the model env var in ``.env.example`` and
-``deploy/docker-compose.yml`` as ``QUALITY_VALIDATOR_AGENT_MODEL_NAME``.
-
-The agent should:
-  - Receive a :class:`SlideContent` and the :class:`SlideAssignment` produced
-    by the SlideBuilderAgent.
-  - Use a structured-output LLM call (via :class:`QualityValidationTask`) to
-    score the assignment across multiple quality dimensions.
-  - Return a :class:`SlideValidationResult` with ``passed``, ``score``,
-    ``feedback``, and ``issues``.
-  - Set ``passed=False`` and provide specific, actionable ``feedback`` whenever
-    ``score < MIN_QUALITY_SCORE`` so the SlideBuilderAgent can self-correct.
-
-See :mod:`src.agents.tasks.quality_validation.runner` for detailed criteria.
-"""
+"""Agent that validates the quality of a slide assignment."""
 
 import logging
 
