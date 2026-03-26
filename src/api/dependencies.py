@@ -9,20 +9,54 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from src.bootstrap import (
-    get_content_analyzer,
-    get_context_retriever,
     get_db,
-    get_document_service,
-    get_search_service,
+    get_document_repository,
+    get_template_repository,
+    get_document_ingestion_pipeline,
+    get_template_ingestion_pipeline,
+    get_presentation_builder_service,
+    get_slide_builder_agent,
+    get_presentation_structure_agent,
+    get_content_generator_agent,
+    get_quality_validator_agent,
+    get_presentation_workflow,
 )
-from src.services.context_analyzer import ContentAnalyzer as ContentAnalyzerClass
-from src.services.data_ingestion.document_service import (
-    DocumentService as DocumentServiceClass,
-)
-from src.services.retrieval_context import ContextRetriever as ContextRetrieverClass
+from src.agents import PresentationStructureAgent as PresentationStructureAgentClass
+from src.agents import ContentGeneratorAgent as ContentGeneratorAgentClass
+from src.agents import SlideBuilderAgent as SlideBuilderAgentClass
+from src.agents import QualityValidatorAgent as QualityValidatorAgentClass
+from src.services.ingestion.document import DocumentRepository as DocumentRepositoryClass
+from src.services.ingestion.template import TemplateRepository as TemplateRepositoryClass
+from src.services.presentation.builder import PresentationBuilderService as PresentationBuilderServiceClass
+from src.pipeline.document.pipeline import DocumentIngestionPipeline as DocumentIngestionPipelineClass
+from src.pipeline.template.pipeline import TemplateIngestionPipeline as TemplateIngestionPipelineClass
+from src.pipeline.presentation.workflow import PresentationWorkflow as PresentationWorkflowClass
 
 Database = Annotated[Session, Depends(get_db)]
-DocumentService = Annotated[DocumentServiceClass, Depends(get_document_service)]
-SearchService = Annotated[ContextRetrieverClass, Depends(get_search_service)]
-ContextRetriever = Annotated[ContextRetrieverClass, Depends(get_context_retriever)]
-ContentAnalyzer = Annotated[ContentAnalyzerClass, Depends(get_content_analyzer)]
+
+DocumentRepository = Annotated[DocumentRepositoryClass, Depends(get_document_repository)]
+TemplateRepository = Annotated[TemplateRepositoryClass, Depends(get_template_repository)]
+
+DocumentIngestionPipeline = Annotated[
+    DocumentIngestionPipelineClass, Depends(get_document_ingestion_pipeline)
+]
+TemplateIngestionPipeline = Annotated[
+    TemplateIngestionPipelineClass, Depends(get_template_ingestion_pipeline)
+]
+
+PresentationBuilderService = Annotated[
+    PresentationBuilderServiceClass, Depends(get_presentation_builder_service)
+]
+SlideBuilderAgent = Annotated[SlideBuilderAgentClass, Depends(get_slide_builder_agent)]
+PresentationStructureAgent = Annotated[
+    PresentationStructureAgentClass, Depends(get_presentation_structure_agent)
+]
+ContentGeneratorAgent = Annotated[
+    ContentGeneratorAgentClass, Depends(get_content_generator_agent)
+]
+QualityValidatorAgent = Annotated[
+    QualityValidatorAgentClass, Depends(get_quality_validator_agent)
+]
+PresentationWorkflow = Annotated[
+    PresentationWorkflowClass, Depends(get_presentation_workflow)
+]

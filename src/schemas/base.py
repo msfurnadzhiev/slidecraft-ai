@@ -17,3 +17,7 @@ class BaseSchema(BaseModel):
         validate_by_alias=True,
         from_attributes=True,
     )
+
+class UserRequest(BaseSchema):
+    """User request for a presentation structure."""
+    user_request: str

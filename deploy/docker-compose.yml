@@ -11,16 +11,16 @@ services:
       - "8000:8000"
     depends_on:
       - db
-      - embeddings
     env_file:
       - ../.env
     environment:
       PYTHONUNBUFFERED: "1"
       DATABASE_URL: postgresql://postgres:postgres@db:5432/slidecraft
       IMAGE_STORAGE_PATH: /data/images
-      EMBEDDINGS_API_URL: http://embeddings:80/v1
+      TEMPLATE_STORAGE_PATH: /data/templates
+      PRESENTATION_STORAGE_PATH: /data/presentations
     volumes:
-      - images:/data/images
+      - data:/data
 
   db:
     container_name: slidecraft-db
@@ -49,5 +49,4 @@ services:
 
 volumes:
   pgdata:
-  images:
-  hf_cache:
+  data:

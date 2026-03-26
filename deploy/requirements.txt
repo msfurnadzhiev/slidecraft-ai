@@ -14,11 +14,17 @@ pydantic==2.11.7
 # PDF ingestion
 PyMuPDF==1.27.1
 
+# PowerPoint template parsing
+python-pptx==1.0.2
+
 # Chunking
 tiktoken==0.12.0
 
 # Content analysis
 scikit-learn==1.6.1
 
-# LLM summarization
-google-genai
+# LLM framework
+langchain-classic
+langchain-core
+langchain-google-genai
+langgraph
