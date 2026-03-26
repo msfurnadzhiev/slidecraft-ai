@@ -1,37 +1,52 @@
 """Chunk search tool for agent workflows."""
 
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from langchain_core.tools import BaseTool, tool
 
-from src.schemas.document.chunk import ChunkSearchResult
+from src.schemas.document import ChunkSearchResult
 from src.services.retrieval.semantic_search import SemanticSearchSevice
 
 def format_chunks(
     chunks: List[ChunkSearchResult],
-    *,
     include_index: bool = False,
-    text_label: str = "text",
-    empty_label: str = "(no text passages)",
 ) -> str:
-    """Format chunk search results for prompts or tool output."""
-    if not chunks:
-        return empty_label
+    """
+    Convert chunk search results into a readable string for LLM consumption.
 
-    lines: List[str] = []
-    for idx, chunk in enumerate(chunks, 1):
-        prefix = f"[{idx}] " if include_index else ""
-        text = getattr(chunk, "text", None) or getattr(chunk, "content", "")
-        lines.append(
-            f"{prefix}chunk_id={chunk.chunk_id}, page={chunk.page_number}, score={chunk.score:.3f}\n"
-            f"{text_label}: {text}"
-        )
-    return "\n\n".join(lines)
+    Args:
+        chunks: Retrieved chunk results
+        include_index: Whether to prefix each chunk with an index
+
+    Returns:
+        Formatted string representation of chunks
+    """
+    if not chunks:
+        return "(no matching chunks)"
+
+    return "\n\n".join(
+        _format_single_chunk(chunk, idx if include_index else None)
+        for idx, chunk in enumerate(chunks, 1)
+    )
+
+
+def _format_single_chunk(
+    chunk: ChunkSearchResult,
+    index: Optional[int] = None,
+) -> str:
+    """Format a single chunk into a structured text block."""
+    prefix = f"[{index}] " if index else ""
+
+    return (
+        f"{prefix}chunk_id={chunk.chunk_id}, "
+        f"page={chunk.page_number}, "
+        f"score={chunk.score:.3f}\n"
+        f"content: {chunk.content}"
+    )
 
 
 def build_chunk_search_tool(
-    *,
     document_id: UUID,
     search_service: SemanticSearchSevice,
     result_limit: int,
@@ -52,8 +67,6 @@ def build_chunk_search_tool(
         return format_chunks(
             chunks,
             include_index=True,
-            text_label="content",
-            empty_label="(no matching chunks)",
         )
 
     return search_relevant_chunks

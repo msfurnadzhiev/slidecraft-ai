@@ -5,31 +5,17 @@ from uuid import UUID
 
 from src.schemas.base import BaseSchema
 
+from src.schemas.document.chunk import ChunkRawContent
+from src.schemas.document.image import ImageRawContent
 
-class PageContent(BaseSchema):
-    """Schema for a page extracted from a document."""
-
-    page_number: int
-    text: str
-    char_count: int
-
-class ImageContent(BaseSchema):
-    """Schema for a image extracted from a document."""
-
-    page_number: int
-    image_bytes: bytes
-    image_mime_type: str
-    file_name: str
-
-
-class DocumentContent(BaseSchema):
-    """In-memory representation of a loaded document with its page text and images."""
+class DocumentRawContent(BaseSchema):
+    """Raw content of a loaded document with its page text and images."""
 
     document_id: UUID
     file_name: str
     total_pages: int
-    pages: List[PageContent] = []
-    images: List[ImageContent] = []
+    pages: List[ChunkRawContent] = []
+    images: List[ImageRawContent] = []
     metadata: Optional[Dict[str, Any]] = None
 
 

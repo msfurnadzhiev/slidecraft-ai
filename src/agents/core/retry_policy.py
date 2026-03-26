@@ -67,8 +67,23 @@ class RetryPolicy:
 
         return min(delay, self.max_delay)
 
-    def execute(self, fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-        """Execute function with retry logic."""
+    def execute(
+        self,
+        fn: Callable[..., T],
+        *args: Any,
+        on_retry: Callable[[], None] | None = None,
+        **kwargs: Any,
+    ) -> T:
+        """Execute function with retry logic.
+
+        Args:
+            fn: The function to execute.
+            *args: Positional arguments forwarded to ``fn``.
+            on_retry: Optional callback invoked after each wait period, before
+                the next attempt.  Use this to reset external state (e.g. a
+                rate-limiter window) that may have drifted due to the 429 error.
+            **kwargs: Keyword arguments forwarded to ``fn``.
+        """
         for attempt in range(1, self.max_retries + 1):
             try:
                 return fn(*args, **kwargs)
@@ -87,5 +102,8 @@ class RetryPolicy:
                 )
 
                 time.sleep(delay)
+
+                if on_retry is not None:
+                    on_retry()
 
         raise RuntimeError("Unreachable")

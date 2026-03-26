@@ -35,7 +35,21 @@ class RateLimiter:
         """Block until request fits within RPM and TPM limits.
 
         Also available as ``wait_if_needed`` for backward compatibility.
+
+        ``estimated_tokens`` is capped to ``tpm`` so that a single oversized
+        request (e.g. a large agent scratchpad) never causes an infinite loop:
+        once the window resets and ``_token_count`` is 0, the capped value
+        satisfies the TPM condition and the call is allowed through.
         """
+        capped_tokens = min(estimated_tokens, self.rate_limits.tpm)
+
+        if estimated_tokens > self.rate_limits.tpm:
+            log.warning(
+                "Estimated tokens (%d) exceeds TPM limit (%d) — capping for "
+                "rate-limit check; the API may still throttle this request.",
+                estimated_tokens,
+                self.rate_limits.tpm,
+            )
 
         while True:
             with self._lock:
@@ -43,7 +57,7 @@ class RateLimiter:
 
                 if (
                     self._request_count < self.rate_limits.rpm
-                    and self._token_count + estimated_tokens <= self.rate_limits.tpm
+                    and self._token_count + capped_tokens <= self.rate_limits.tpm
                 ):
                     return
 

@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Tuple
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from src.agents.core.base_llm_processor import BaseLLMProcessor
+from src.agents.core.utils import parse_numbered_response
 from src.agents.core.utils import TOKEN_SAFETY_MULTIPLIER
 from src.agents.core.rate_limiter import RateLimiter
 from src.agents.tasks.content_summarization.prompts import build_single_prompt, build_numbered_prompt
@@ -126,10 +126,14 @@ class SummarizationTask:
         indices: List[int],
     ) -> List[str]:
         try:
-            return self._call_with_retry(self._summarize_batch, texts)
+            return self._call_with_retry(
+                self._summarize_batch,
+                texts,
+                on_retry=self.rate_limiter.force_reset,
+            )
         except Exception:
             log.exception(
-                "Batch %d/%d failed – pages %s will have empty summaries.",
+                "Batch %d/%d failed - pages %s will have empty summaries.",
                 batch_no, total_batches,
                 ", ".join(str(idx + 1) for idx in indices),
             )
@@ -144,4 +148,4 @@ class SummarizationTask:
 
         if len(texts) == 1:
             return [raw]
-        return BaseLLMProcessor.parse_numbered_response(raw, len(texts))
+        return parse_numbered_response(raw, len(texts))

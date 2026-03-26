@@ -1,5 +1,8 @@
 from enum import Enum
+from typing import List
 from uuid import UUID
+
+from pydantic import Field
 
 from src.schemas.base import BaseSchema
 
@@ -13,7 +16,7 @@ class ImageContent(BaseSchema):
     """Image content of a slide."""
     image_url: str
     image_id: UUID
-    score: float
+    score: float = 0.0
 
 class SlideType(str, Enum):
     TITLE = "title"
@@ -34,3 +37,17 @@ class SlideContent(SlideStructure):
     """"""
     content: list[TextContent] | None = None
     images: list[ImageContent] | None = None
+
+class PlaceholderFill(BaseSchema):
+    """Condensed presentation text written for a single placeholder."""
+
+    placeholder_idx: int
+    text: str
+    reasoning: str
+
+class SlideAssignment(BaseSchema):
+    """Combined layout selection and content distribution for a single slide."""
+
+    layout_index: int
+    placeholder_fills: List[PlaceholderFill]
+    reasoning: str

@@ -2,26 +2,54 @@
 
 import os
 from uuid import uuid4
-from typing import List
+from typing import List, Dict, TYPE_CHECKING
 
 import fitz
 
-from src.infrastructure.loaders.file_loader import FileLoader
-from src.schemas.document.document import DocumentContent, PageContent, ImageContent
-from src.infrastructure.loaders.file_loader import DocumentMetadata
+from src.schemas.document import (
+    DocumentRawContent,
+    ImageRawContent,
+    ChunkRawContent,
+)
+from src.utils.singleton import SingletonMeta
 
-class PDFLoader(FileLoader):
+if TYPE_CHECKING:
+    from src.db.models import Chunk
+
+# List of metadata keys to extract from PDF
+DOCUMENT_METADATA_KEYS = (
+    "title",
+    "author",
+    "subject",
+    "keywords",
+    "creator",
+    "producer",
+    "creationDate",
+    "modDate",
+    "format",
+    "encryption",
+)
+
+# Maps chunk_id (string) to extracted text (string)
+ChunkTextMap: type = Dict[str, str]
+
+# Maps page number to a list of chunks on that page
+PageChunksMap: type = Dict[int, List["Chunk"]]
+
+# Maps metadata key (string) to value (string)
+DocumentMetadata: type = Dict[str, str]
+
+class PDFLoader(metaclass=SingletonMeta):
     """Load a PDF file and extract document content, text chunks, and metadata."""
 
-    def load_file(self, file_path: str) -> DocumentContent:
-        """
-        Load a PDF file and return a DocumentContent object.
+    def load_file(self, file_path: str) -> DocumentRawContent:
+        """Load a PDF file and return a DocumentRawContent object.
 
         Args:
             file_path: Path to the PDF file.
 
         Returns:
-            DocumentContent with page text and metadata.
+            DocumentRawContent with page text and metadata.
         """
         filename = os.path.basename(file_path)
         document_id = uuid4()
@@ -30,7 +58,7 @@ class PDFLoader(FileLoader):
         images = self.extract_images(file_path)
         metadata = self.extract_metadata(file_path)
         
-        return DocumentContent(
+        return DocumentRawContent(
             document_id=document_id,
             file_name=filename,
             total_pages=len(pages),
@@ -39,18 +67,16 @@ class PDFLoader(FileLoader):
             metadata=metadata,
         )
 
-    def extract_pages(self, file_path: str) -> List[PageContent]:
-        """
-        Extract pages from a PDF file.
-        """
-        pages: List[PageContent] = []
+    def extract_pages(self, file_path: str) -> List[ChunkRawContent]:
+        """Extract pages from a PDF file."""
+        pages: List[ChunkRawContent] = []
         doc = fitz.open(file_path)
         try:
             for page_index in range(len(doc)):
                 page = doc.load_page(page_index)
                 text = page.get_text("text").strip()
                 pages.append(
-                    PageContent(
+                    ChunkRawContent(
                         page_number=page_index + 1,
                         text=text,
                         char_count=len(text),
@@ -61,8 +87,7 @@ class PDFLoader(FileLoader):
         return pages
 
     def extract_metadata(self, file_path: str) -> DocumentMetadata:
-        """
-        Extract embedded metadata from a PDF.
+        """Extract embedded metadata from a PDF.
         
         Only returns keys with non-empty string values.
 
@@ -85,17 +110,16 @@ class PDFLoader(FileLoader):
         finally:
             doc.close()
 
-    def extract_images(self, file_path: str) -> List[ImageContent]:
-        """
-        Extract images from a PDF file.
+    def extract_images(self, file_path: str) -> List[ImageRawContent]:
+        """Extract images from a PDF file.
 
         Args:
             file_path: Path to the PDF file.
 
         Returns:
-            List of ImageContent objects.
+            List of ImageRawContent objects.
         """
-        images: List[ImageContent] = []
+        images: List[ImageRawContent] = []
         doc = fitz.open(file_path)
 
         try:
@@ -116,7 +140,7 @@ class PDFLoader(FileLoader):
                     file_name = f"image_{page_number}_{idx}.{ext.lower()}"
 
                     images.append(
-                        ImageContent(
+                        ImageRawContent(
                             page_number=page_number,
                             image_bytes=raw_bytes,
                             image_mime_type=mime_type,
@@ -125,4 +149,5 @@ class PDFLoader(FileLoader):
                     )
         finally:
             doc.close()
+
         return images

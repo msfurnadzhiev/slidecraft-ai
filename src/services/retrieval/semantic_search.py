@@ -1,19 +1,17 @@
 """Text (chunk) and image semantic search for document-scoped RAG, using query strings."""
 
 import logging
-from typing import List, Tuple, TypeVar, Generic, Callable
+from typing import List, Tuple, TypeVar, Callable
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 log = logging.getLogger(__name__)
 
-from src.db.crud import chunk_crud, image_crud
+from src.db.crud import document_crud
 from src.db.models import Chunk, Image
-from src.schemas.document.chunk import ChunkSearchResult
-from src.schemas.document.image import ImageSearchResult
+from src.schemas.document import ChunkSearchResult, ImageSearchResult
 
-from src.utils.singleton import SingletonMeta
 from src.infrastructure.embeddings.text_embedder import TextEmbedder
 
 # Default values for semantic search
@@ -30,15 +28,13 @@ ImageSimilarityRows = List[Tuple[Image, float]]
 T = TypeVar("T")
 R = TypeVar("R")
 
-class SemanticSearchSevice(metaclass=SingletonMeta):
-    """
-    Semantic search over content belonging to a single document.
-    Supports both text chunks and images.
-    """
+
+class SemanticSearchSevice:
+    """Semantic search over content belonging to a single document."""
 
     def __init__(self, db: Session):
         self.db = db
-        self.embedder = TextEmbedder()
+        self.embedder = TextEmbedder.get_instance()
 
     def _compute_score(self, distance: float) -> float:
         """Convert distance to similarity score."""
@@ -95,7 +91,7 @@ class SemanticSearchSevice(metaclass=SingletonMeta):
         return self._semantic_search(
             query=query,
             document_id=document_id,
-            crud_search_fn=chunk_crud.search_similar,
+            crud_search_fn=document_crud.chunk_similarity_search,
             result_mapper=mapper,
             result_limit=result_limit,
             similarity_threshold=similarity_threshold,
@@ -119,11 +115,25 @@ class SemanticSearchSevice(metaclass=SingletonMeta):
                 description=image.description,
             )
 
-        return self._semantic_search(
+        results = self._semantic_search(
             query=query,
             document_id=document_id,
-            crud_search_fn=image_crud.search_similar,
+            crud_search_fn=document_crud.image_similarity_search,
             result_mapper=mapper,
             result_limit=result_limit,
             similarity_threshold=similarity_threshold,
         )
+
+        log.debug(
+            "Image search — document_id=%s, query=%r, threshold=%.2f → %d result(s)",
+            document_id,
+            query[:80],
+            similarity_threshold,
+            len(results),
+        )
+        if results:
+            log.debug(
+                "Top image scores: %s",
+                ", ".join(f"{r.score:.3f}" for r in results),
+            )
+        return results

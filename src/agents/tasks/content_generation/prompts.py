@@ -1,59 +1,42 @@
 """Prompts for content-generation workflow."""
 
-from typing import List
-
-from src.schemas.document.chunk import ChunkSearchResult
-from src.schemas.document.image import ImageSearchResult
 from src.schemas.presentation.slide import SlideStructure
 
 
-SYNTHESIS_SYSTEM_PROMPT = (
-    "You are a presentation content synthesizer working with a large document (potentially hundreds of pages). "
-    "You receive a numbered list of pre-retrieved passages and images. "
-    "Your job is to convert ALL of them into rich, detailed slide content.\n\n"
-    "MANDATORY rules — no exceptions:\n"
-    "1. Every single passage in the list MUST appear as exactly one TextContent entry in content[]. "
+AGENT_SYSTEM_PROMPT = (
+    "You are a presentation content generator. "
+    "Use the search tools to retrieve relevant text passages and images from "
+    "the document before producing the final SlideContent.\n\n"
+    "Retrieval strategy:\n"
+    "- Issue several search_relevant_chunks queries derived from the slide "
+    "'title' and 'description' to ensure broad topic coverage.\n"
+    "- ALWAYS issue at least one search_relevant_images query, even for text-heavy slides.\n\n"
+    "MANDATORY synthesis rules — no exceptions:\n"
+    "1. Every single passage retrieved MUST appear as exactly one TextContent entry in content[]. "
     "   Do NOT skip, merge, or omit any passage, regardless of how relevant it seems.\n"
-    "2. Each TextContent.text must be a detailed paragraph of 3–6 sentences that rewrites and expands "
+    "2. Each TextContent.text must be a detailed paragraph of 3-6 sentences that rewrites and expands "
     "   the passage in the context of the slide topic. Do not copy verbatim.\n"
-    "3. Every retrieved image MUST appear as an ImageContent entry in images[]. "
-    "   Copy image_url, image_id, and score exactly as shown.\n"
-    "4. Exception: TITLE slides set content to null (no text) but still include all images.\n"
-    "5. Use only information from the given passages — do not invent facts.\n"
-    "6. Return a single valid SlideContent JSON object."
+    "3. Each TextContent.chunk_id must be taken exactly from the chunk_id value shown in the "
+    "   search_relevant_chunks tool results. Do NOT invent, modify, or guess any chunk_id.\n"
+    "4. TITLE slides set content to null (no text).\n"
+    "5. Use only information from the retrieved passages — do not invent facts.\n"
+    "6. For images: EVERY result returned by search_relevant_images MUST appear as an ImageContent "
+    "   object in images[]. Each object must have exactly three fields: image_id (UUID string from "
+    "   the tool), image_url (the image_url value shown in the tool output), and score (the numeric "
+    "   score shown in the tool output). Do NOT skip, merge, or omit any image result. "
+    "   Do NOT invent or modify any value. Set images to null ONLY if the tool returned no results.\n"
+    "7. Return a single valid SlideContent JSON object as your final answer."
 )
 
 
-def build_synthesis_prompt(
-    slide_structure: SlideStructure,
-    chunks: List[ChunkSearchResult],
-    images: List[ImageSearchResult],
-) -> str:
-    """Embed all retrieved chunks and images directly into the synthesis prompt."""
-    chunks_section = "\n\n".join(
-        f"[{i + 1}] chunk_id={c.chunk_id}  page={c.page_number}  score={c.score:.3f}\n{c.content}"
-        for i, c in enumerate(chunks)
-    ) or "(no passages retrieved)"
-
-    images_section = "\n\n".join(
-        f"[{i + 1}] image_id={img.image_id}  page={img.page_number}  score={img.score:.3f}\n"
-        f"url: {img.storage_path}\ndescription: {img.description or '(none)'}"
-        for i, img in enumerate(images)
-    ) or "(no images retrieved)"
-
+def build_agent_input(slide: SlideStructure) -> str:
+    """Build the human-turn message that kicks off an agent run for one slide."""
     return (
-        f"Slide metadata:\n"
-        f"  slide_number: {slide_structure.slide_number}\n"
-        f"  slide_type: {slide_structure.slide_type.value}\n"
-        f"  title: {slide_structure.title}\n"
-        f"  description: {slide_structure.description}\n\n"
-        f"Retrieved passages — {len(chunks)} total. ALL must appear in content[]:\n\n"
-        f"{chunks_section}\n\n"
-        f"Retrieved images — {len(images)} total. ALL must appear in images[]:\n\n"
-        f"{images_section}\n\n"
-        "Produce a SlideContent object:\n"
-        "- content[]: one entry per passage, in order. "
-        "  text = detailed paragraph, chunk_id = the chunk_id shown, score = the score shown.\n"
-        "- images[]: one entry per image. "
-        "  image_url = url shown, image_id = image_id shown, score = score shown."
+        f"Generate content for:\n"
+        f"  slide_number: {slide.slide_number}\n"
+        f"  slide_type: {slide.slide_type.value}\n"
+        f"  title: {slide.title}\n"
+        f"  description: {slide.description}\n\n"
+        "Search for relevant passages and images using the tools, "
+        "then return a SlideContent JSON object."
     )

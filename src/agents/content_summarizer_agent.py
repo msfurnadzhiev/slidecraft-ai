@@ -4,14 +4,14 @@ import logging
 import os
 from typing import List, Tuple
 
-from src.agents.core.base_llm_processor import BaseLLMProcessor
+from src.agents.core.agent_base import BaseAgent
 from src.agents.tasks.content_summarization.runner import SummarizationTask
 from src.utils.profiling import trace_runtime
 
 log = logging.getLogger(__name__)
 
 
-class ContentSummarizerAgent(BaseLLMProcessor, name="content-summarizer"):
+class ContentSummarizerAgent(BaseAgent, name="content-summarizer"):
     """Generate concise chunk summaries with rate-limit-aware batching."""
 
     def __init__(self) -> None:

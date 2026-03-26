@@ -43,7 +43,7 @@ class LocalImageStorage(ImageStorage):
     _DEFAULT_BASE_DIR: Final[str] = "/data/images"
 
     def __init__(self) -> None:
-        self.base_dir = self._DEFAULT_BASE_DIR
+        self.base_dir = os.getenv("IMAGE_STORAGE_PATH", self._DEFAULT_BASE_DIR)
         self._ensure_base_dir()
 
     def _ensure_base_dir(self) -> None:

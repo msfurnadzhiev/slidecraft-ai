@@ -46,6 +46,7 @@ AGENT_MODELS: Dict[str, str] = {
     "presentation-structure": os.getenv("PRESENTATION_AGENT_MODEL_NAME"),
     "image-describer": os.getenv("IMAGE_DESCRIBER_AGENT_MODEL_NAME"),
     "content-summarizer": os.getenv("CONTENT_SUMMARIZER_AGENT_MODEL_NAME"),
+    "slide-builder": os.getenv("SLIDE_BUILDER_AGENT_MODEL_NAME"),
 }
 
 class AgentMeta(SingletonMeta):

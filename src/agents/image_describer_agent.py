@@ -4,13 +4,13 @@ import logging
 import os
 from typing import List, Tuple
 
-from src.agents.core import BaseLLMProcessor
+from src.agents.core import BaseAgent
 from src.agents.tasks.image_description.runner import ImageDescriptionTask
 from src.utils.profiling import trace_runtime
 
 log = logging.getLogger(__name__)
 
-class ImageDescriberAgent(BaseLLMProcessor, name="image-describer"):
+class ImageDescriberAgent(BaseAgent, name="image-describer"):
     """Generate concise image descriptions with rate-limit-aware batching."""
 
     def __init__(self) -> None:

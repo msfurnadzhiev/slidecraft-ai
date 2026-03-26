@@ -5,7 +5,7 @@ from typing import Callable, List, Tuple
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from src.agents.core.base_llm_processor import BaseLLMProcessor
+from src.agents.core.utils import parse_numbered_response
 from src.agents.core.utils import TOKEN_SAFETY_MULTIPLIER
 from src.agents.core.rate_limiter import RateLimiter
 from src.agents.tasks.image_description.prompts import build_single_prompt, build_numbered_prompt
@@ -49,7 +49,7 @@ class ImageDescriptionTask:
                 batch_no, len(batches), len(batch), estimated,
             )
 
-            batch_descriptions = self._generate_batch_safe(batch_no, len(batches), batch)
+            batch_descriptions = self._generate_batch(batch_no, len(batches), batch)
             self.rate_limiter.record(estimated)
             descriptions.extend(batch_descriptions)
 
@@ -76,20 +76,32 @@ class ImageDescriptionTask:
             * TOKEN_SAFETY_MULTIPLIER
         )
 
-    def _generate_batch_safe(
+    def _generate_batch(
         self,
         batch_no: int,
         total_batches: int,
         batch: List[Tuple[bytes, str]],
     ) -> List[str]:
-        try:
-            return self._call_with_retry(self._describe_batch, batch)
-        except Exception:
-            log.exception(
-                "Batch %d/%d failed – images will have empty descriptions.",
-                batch_no, total_batches,
+        """Describe one batch, raising on any failure so the caller can decide how to handle it."""
+        descriptions = self._call_with_retry(
+            self._describe_batch,
+            batch,
+            on_retry=self.rate_limiter.force_reset,
+        )
+
+        # Validate that every image in the batch received a non-empty description.
+        # parse_numbered_response returns "" for images the model skipped or mis-formatted;
+        # that is a silent data-quality failure we must surface here.
+        empty_indices = [i for i, d in enumerate(descriptions) if not d]
+        if empty_indices:
+            raise RuntimeError(
+                f"Batch {batch_no}/{total_batches}: "
+                f"{len(empty_indices)} image(s) received empty descriptions "
+                f"(indices {empty_indices}). "
+                "Check the model's response format or the image content."
             )
-            return [""] * len(batch)
+
+        return descriptions
 
     def _describe_batch(self, images: List[Tuple[bytes, str]]) -> List[str]:
         if not images:
@@ -100,4 +112,4 @@ class ImageDescriptionTask:
 
         if len(images) == 1:
             return [raw]
-        return BaseLLMProcessor.parse_numbered_response(raw, len(images))
+        return parse_numbered_response(raw, len(images))

@@ -1,7 +1,15 @@
-from typing import Dict, List, Optional
+from typing import Optional
 from uuid import UUID
 
 from src.schemas.base import BaseSchema
+
+class ImageRawContent(BaseSchema):
+    """Schema for a image extracted from a document."""
+
+    page_number: int
+    image_bytes: bytes
+    image_mime_type: str
+    file_name: str
 
 class ImageBase(BaseSchema):
     """Base schema for image."""
@@ -10,7 +18,6 @@ class ImageBase(BaseSchema):
     storage_path: str
     page_number: int
     file_name: str
-
 
 class ImageCreate(ImageBase):
     """Schema for creating an image."""

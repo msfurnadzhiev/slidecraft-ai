@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.api.routers import document, presentation
+from src.api.routers import document, presentation, template
 from src.bootstrap import startup
 
 _API_PREFIX = "/api/v1"
@@ -67,4 +67,5 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SlideCraft API", version="0.1", lifespan=lifespan)
 
 app.include_router(document.router, prefix=_API_PREFIX)
+app.include_router(template.router, prefix=_API_PREFIX)
 app.include_router(presentation.router, prefix=_API_PREFIX)

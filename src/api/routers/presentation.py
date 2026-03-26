@@ -1,18 +1,18 @@
-"""Presentation router: generate presentation structure and content."""
+"""Presentation router: generate presentation structure, content, and .pptx files."""
 
 import logging
-import time
-from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
 from src.api.dependencies import (
-    PresentationStructureAgent,
-    ContentGeneratorAgent,
+    DocumentRepository,
+    PresentationWorkflow,
+    TemplateRepository,
 )
-from src.schemas.base import UserRequest
-from src.schemas.presentation.presentation import PresentationStructure, PresentationContent
-from src.schemas.presentation.slide import SlideContent
+from src.schemas.presentation.presentation import (
+    PresentationWorkflowRequest,
+    PresentationWorkflowResponse,
+)
 
 log = logging.getLogger(__name__)
 
@@ -20,100 +20,53 @@ router = APIRouter(prefix="/presentation", tags=["presentation"])
 
 
 @router.post(
-    "/structure/{document_id}",
-    response_model=PresentationStructure,
+    "/generate",
+    response_model=PresentationWorkflowResponse,
 )
-def suggest_presentation_structure(
-    document_id: UUID,
-    user_request: UserRequest,
-    presentation_agent: PresentationStructureAgent,
+def run_presentation_workflow(
+    request: PresentationWorkflowRequest,
+    workflow: PresentationWorkflow,
+    document_repository: DocumentRepository,
+    template_repository: TemplateRepository,
 ):
-    """Generate the structure for the presentation.
-
-    Uses an LLM agent to generate the structure for the presentation.
-
-    Args:
-        document_id: Target document (path parameter).
-        user_request: User request to generate the presentation structure.
-        presentation_agent: Agent that generates the presentation structure.
+    """Run the full end-to-end presentation generation pipeline in one call.
 
     Raises:
-        HTTPException: 404 if the document is not found.
+        HTTPException 404: Document or template not found.
+        HTTPException 500: Any unrecoverable error during pipeline execution.
 
     Returns:
-        PresentationStructure with the suggested structure as text.
+        :class:`PresentationWorkflowResponse` with the storage path, total
+        slide count, and total number of quality revision attempts.
     """
+    document = document_repository.get_document(request.document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    template = template_repository.get_template(request.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found.")
+
+    log.info(
+        "Workflow endpoint — document_id=%s, template_id=%s, request='%s'",
+        request.document_id,
+        request.template_id,
+        request.user_request[:120],
+    )
+
     try:
-        structure: PresentationStructure = \
-            presentation_agent.suggest_structure(document_id, user_request.user_request)
-
-        return structure
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@router.post(
-    "/content/{document_id}",
-    response_model=PresentationContent,
-)
-def suggest_presentation_content(
-    document_id: UUID,
-    structure: PresentationStructure,
-    content_generator_agent: ContentGeneratorAgent,
-):
-    """Generate the content for the presentation structure.
-
-    Uses an LLM agent to generate the content for the presentation structure.
-
-    Args:
-        document_id: Target document (path parameter).
-        structure: Presentation structure to generate the content for.
-        content_generator_agent: Agent that generates the presentation content.
-
-    Raises:
-        HTTPException: 404 if the document is not found.
-
-    Returns:
-        PresentationContent with the suggested content for the presentation.
-    """
-    try:
-        total_slides = len(structure.slides)
-        log.info(
-            "Content generation started — document_id=%s, slides=%d",
-            document_id,
-            total_slides,
+        response = workflow.run(
+            document_id=request.document_id,
+            user_request=request.user_request,
+            template_id=request.template_id,
+            template_file_path=template.file_path,
+            template_layouts=template.layouts,
         )
-        wall_start = time.perf_counter()
+    except Exception as exc:
+        log.exception("Workflow failed: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Presentation workflow failed: {exc}",
+        ) from exc
 
-        presentation_content: PresentationContent = PresentationContent(
-            document_id=document_id,
-            slides=[],
-        )
-
-        for i, slide in enumerate(structure.slides, 1):
-            log.info(
-                "Slide %d/%d — '%s' [%s]",
-                i,
-                total_slides,
-                slide.title,
-                slide.slide_type,
-            )
-            slide_content: SlideContent = content_generator_agent.generate_structure(document_id, slide)
-            presentation_content.slides.append(slide_content)
-
-        elapsed = time.perf_counter() - wall_start
-        total_chunks = sum(len(s.content or []) for s in presentation_content.slides)
-        total_images = sum(len(s.images or []) for s in presentation_content.slides)
-        log.info(
-            "Content generation complete — %d slides, %d text chunks, %d images in %.1fs (avg %.1fs/slide)",
-            total_slides,
-            total_chunks,
-            total_images,
-            elapsed,
-            elapsed / total_slides if total_slides else 0,
-        )
-
-        return presentation_content
-
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    return response

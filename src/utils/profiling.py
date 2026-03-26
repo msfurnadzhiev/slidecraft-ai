@@ -1,3 +1,5 @@
+"""Module for profiling runtime performance of functions."""
+
 import logging
 import time
 from functools import wraps
